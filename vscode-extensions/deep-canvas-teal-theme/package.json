@@ -1,0 +1,19 @@
+{
+  "name": "deep-canvas-teal-theme",
+  "displayName": "Deep Canvas Teal Theme",
+  "description": "A teal-themed VS Code color theme for Deep Canvas AI Platform",
+  "version": "1.0.0",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": ["Themes"],
+  "contributes": {
+    "themes": [
+      {
+        "label": "Deep Canvas Teal",
+        "uiTheme": "vs-dark",
+        "path": "./themes/deep-canvas-teal.json"
+      }
+    ]
+  }
+}

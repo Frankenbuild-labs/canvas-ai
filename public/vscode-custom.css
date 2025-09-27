@@ -1,0 +1,11 @@
+/* Customizations for embedded VS Code Web */
+/* Hide product/logo at top-left of titlebar */
+.monaco-workbench .part.titlebar .titlebar-left > :first-child { display: none !important; }
+.monaco-workbench .part.titlebar .titlebar-left .app-icon { display: none !important; }
+.monaco-workbench .part.titlebar .titlebar-left .brand,
+.monaco-workbench .part.titlebar .titlebar-left a.brand { display: none !important; }
+
+/* Hide Accounts/profile button at top-right of titlebar */
+.monaco-workbench .part.titlebar .titlebar-right [title="Accounts"],
+.monaco-workbench .part.titlebar .titlebar-right [aria-label="Accounts"],
+.monaco-workbench .part.titlebar .titlebar-right .codicon-account { display: none !important; }

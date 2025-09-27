@@ -1,0 +1,1 @@
+2025-09-26: Reverted VS Code embed changes per user request. Restored app/page.tsx to use NEXT_PUBLIC_VSCODE_URL or default 127.0.0.1:3100. Removed iframe CSS injector and extra Next.js rewrites/headers. Attempted to delete public/vscode-custom.css, but file persisted; leaving as-is has no effect since it is no longer injected.

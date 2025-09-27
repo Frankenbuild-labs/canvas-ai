@@ -1,0 +1,33 @@
+version: '3.9'
+
+services:
+  vscode:
+    image: codercom/code-server:4.91.1
+    container_name: embedded-vscode
+    restart: unless-stopped
+    environment:
+      # Disable auth for local embedded use. Remove for production and set PASSWORD or HASHED_PASSWORD.
+      - AUTH=none
+      - DISABLE_TELEMETRY=true
+    working_dir: /home/coder/project
+    command: >-
+      --bind-addr 0.0.0.0:8080
+      --disable-update-check
+      --disable-telemetry
+      /home/coder/project
+    volumes:
+      # Mount the repository into the container workspace
+      - ./:/home/coder/project
+      # Persist user config and extensions between runs
+      - ./docker/code-server/config:/home/coder/.config/code-server
+      - ./docker/code-server/extensions:/home/coder/.local/share/code-server/extensions
+    ports:
+      - "3100:8080"   # VS Code web interface
+      - "23333:23333" # Agent Maestro proxy server
+      - "23334:23334" # Agent Maestro MCP server
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s

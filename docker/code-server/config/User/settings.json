@@ -1,0 +1,107 @@
+{
+    // Welcome page customization
+    "workbench.startupEditor": "welcomePage",
+    "workbench.welcomePage.walkthroughs.openOnInstall": false,
+    "workbench.tips.enabled": false,
+    "update.showReleaseNotes": false,
+    
+    // Teal color customization - Step 2
+    "workbench.colorCustomizations": {
+        "activityBar.background": "#0f172a",
+        "activityBar.foreground": "#14b8a6",
+        "activityBar.inactiveForeground": "#64748b",
+        "activityBarBadge.background": "#14b8a6",
+        "activityBarBadge.foreground": "#ffffff",
+        
+        "statusBar.background": "#0f172a",
+        "statusBar.foreground": "#14b8a6",
+        "statusBar.noFolderBackground": "#0f172a",
+        "statusBar.debuggingBackground": "#14b8a6",
+        
+        "titleBar.activeBackground": "#0f172a",
+        "titleBar.activeForeground": "#14b8a6",
+        "titleBar.inactiveBackground": "#1e293b",
+        
+        "sideBar.background": "#1e293b",
+        "sideBar.foreground": "#e2e8f0",
+        "sideBarSectionHeader.background": "#334155",
+        "sideBarSectionHeader.foreground": "#14b8a6",
+        
+        "editor.background": "#0f172a",
+        "editor.foreground": "#e2e8f0",
+        "editor.selectionBackground": "#14b8a644",
+        "editor.lineHighlightBackground": "#1e293b44",
+        
+        "editorGroupHeader.tabsBackground": "#1e293b",
+        "tab.activeBackground": "#0f172a",
+        "tab.activeForeground": "#14b8a6",
+        "tab.inactiveBackground": "#334155",
+        "tab.inactiveForeground": "#94a3b8",
+        
+        "button.background": "#14b8a6",
+        "button.foreground": "#ffffff",
+        "button.hoverBackground": "#0891b2",
+        
+        "input.background": "#334155",
+        "input.foreground": "#e2e8f0",
+        "input.border": "#475569",
+        
+        "focusBorder": "#14b8a6",
+        "selection.background": "#14b8a644",
+        
+        "terminal.background": "#0f172a",
+        "terminal.foreground": "#e2e8f0",
+        "terminal.ansiCyan": "#14b8a6",
+        "terminal.ansiBrightCyan": "#22d3ee",
+        
+        "panel.background": "#1e293b",
+        "panelTitle.activeForeground": "#14b8a6",
+        "panelTitle.inactiveForeground": "#94a3b8"
+    },
+    
+    // Auto-create workspace on startup
+    "extensions.autoUpdate": false,
+    "extensions.autoCheckUpdates": false,
+    
+    // Default folder settings
+    "files.defaultLanguage": "markdown",
+    "explorer.confirmDelete": false,
+    "explorer.confirmDragAndDrop": false,
+    
+    // Terminal settings
+    "terminal.integrated.defaultProfile.linux": "bash",
+    "terminal.integrated.profiles.linux": {
+        "bash": {
+            "path": "bash",
+            "args": ["-c", "cd ~/DeepCanvas/VibeWorkspace && exec bash"]
+        }
+    },
+    
+    // Editor settings for better AI coding experience
+    "editor.suggestOnTriggerCharacters": true,
+    "editor.acceptSuggestionOnEnter": "smart",
+    "editor.tabCompletion": "on",
+    "editor.wordWrap": "on",
+    "editor.minimap.enabled": true,
+    "editor.bracketPairColorization.enabled": true,
+    "editor.guides.bracketPairs": true,
+    
+    // Extensions to install automatically
+    "deepCanvas.welcome.showOnStartup": true,
+    
+    // Hide unwanted UI elements
+    "workbench.activityBar.visible": true,
+    "workbench.statusBar.visible": true,
+    "workbench.editor.showTabs": "multiple",
+    "breadcrumbs.enabled": true,
+    
+    // File associations
+    "files.associations": {
+        "*.md": "markdown",
+        "*.txt": "plaintext"
+    },
+    
+    // Auto-save for better UX with AI
+    "files.autoSave": "afterDelay",
+    "files.autoSaveDelay": 1000
+}
