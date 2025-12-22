@@ -1,4 +1,23 @@
-// Alias route for generated agent execution to maintain parity with original Lovable repo
-// This re-exports the existing implementation mounted under /api/lovable/execute-agent
-// Generated preview HTML posts to /api/execute-generated-agent; without this alias it 404s.
-export { POST, OPTIONS } from "@/external/lovable-for-ai-agents/app/api/execute-generated-agent/route";
+import { NextResponse } from "next/server";
+
+// Temporary stub for generated agent execution while the external Lovable
+// backend is not configured in this environment.
+export async function POST() {
+	return NextResponse.json(
+		{
+			error: "Generated agent execution is not configured on this server.",
+		},
+		{ status: 501 }
+	);
+}
+
+export function OPTIONS() {
+	return NextResponse.json(null, {
+		status: 204,
+		headers: {
+			"Access-Control-Allow-Origin": "*",
+			"Access-Control-Allow-Methods": "POST, OPTIONS",
+			"Access-Control-Allow-Headers": "Content-Type, Authorization",
+		},
+	});
+}
