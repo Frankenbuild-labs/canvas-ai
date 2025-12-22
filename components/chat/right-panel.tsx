@@ -51,7 +51,8 @@ const businessSubItems = [
 
 const creativeStudioSubItems = [
   { name: "Content", icon: <FileVideo className="w-4 h-4" />, href: "/creative-studio/content" },
-  { name: "Img/Vid Gen", icon: <VideoIcon className="w-4 h-4" />, href: "/creative-studio" },
+  // Route directly to the integrated video studio (Video Starter Kit + IMG.LY editor)
+  { name: "Img/Vid Gen", icon: <VideoIcon className="w-4 h-4" />, href: "/creative-studio/video-studio" },
   { name: "Voice Clone", icon: <Mic className="w-4 h-4" />, href: "/creative-studio/voice" },
   { name: "Model Training", icon: <BrainCircuit className="w-4 h-4" />, href: "/model-training" },
 ]
@@ -134,7 +135,7 @@ export default function RightPanel({ togglePanel }: { togglePanel: () => void })
 
             <div
               className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                isBusinessOpen ? "max-h-52 opacity-100" : "max-h-0 opacity-0"
+                isBusinessOpen ? "max-h-80 opacity-100" : "max-h-0 opacity-0"
               }`}
             >
               <div className="ml-4 space-y-1 border-l border-border pl-4">
