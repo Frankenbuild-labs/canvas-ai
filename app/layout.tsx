@@ -19,6 +19,27 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{
+          __html: `
+            // Prevent page refresh on errors - capture before React loads
+            window.addEventListener('error', (event) => {
+              console.error('🔴 LAYOUT ERROR:', event.error);
+              console.error('🔴 Message:', event.message);
+              console.error('🔴 Stack:', event.error?.stack);
+              event.preventDefault();
+            }, true);
+            
+            window.addEventListener('unhandledrejection', (event) => {
+              console.error('🔴 LAYOUT REJECTION:', event.reason);
+              console.error('🔴 Stack:', event.reason?.stack);
+              event.preventDefault();
+            }, true);
+            
+            console.log('✅ Global error handlers installed');
+          `
+        }} />
+      </head>
       <body className={inter.className}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           {children}

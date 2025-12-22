@@ -1,0 +1,403 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "next:build",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"build"
+			],
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build"
+		},
+		{
+			"label": "docker: up onlyoffice",
+			"type": "shell",
+			"command": "docker",
+			"args": [
+				"compose",
+				"up",
+				"-d",
+				"onlyoffice"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "next:build",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"build"
+			],
+			"problemMatcher": [
+				"$tsc",
+				"$eslint - stylish"
+			],
+			"group": "build"
+		},
+		{
+			"label": "next:build",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"build"
+			],
+			"problemMatcher": [
+				"$tsc",
+				"$eslint - stylish"
+			],
+			"group": "build"
+		},
+		{
+			"label": "next:build",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"build"
+			],
+			"problemMatcher": [
+				"$tsc",
+				"$eslint - stylish"
+			],
+			"group": "build"
+		},
+		{
+			"label": "next:build",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"build"
+			],
+			"problemMatcher": [
+				"$tsc",
+				"$eslint - stylish"
+			],
+			"group": "build"
+		},
+		{
+			"label": "next:build",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"build"
+			],
+			"problemMatcher": [
+				"$tsc",
+				"$eslint - stylish"
+			],
+			"group": "build"
+		},
+		{
+			"label": "next:build",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"build"
+			],
+			"problemMatcher": [
+				"$tsc",
+				"$eslint - stylish"
+			],
+			"group": "build"
+		},
+		{
+			"label": "ad-hoc: typecheck",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"tsc",
+				"--noEmit"
+			],
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build"
+		},
+		{
+			"label": "ad-hoc: typecheck",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"tsc",
+				"--noEmit"
+			],
+			"group": "build"
+		},
+		{
+			"label": "ad-hoc: typecheck",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"tsc",
+				"--noEmit"
+			],
+			"group": "build"
+		},
+		{
+			"label": "ad-hoc: typecheck",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"tsc",
+				"--noEmit"
+			],
+			"group": "build"
+		},
+		{
+			"label": "ad-hoc: typecheck",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"tsc",
+				"--noEmit"
+			],
+			"group": "build"
+		},
+		{
+			"label": "ad-hoc: typecheck",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"tsc",
+				"--noEmit"
+			],
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build"
+		},
+		{
+			"label": "ad-hoc: typecheck",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"tsc",
+				"--noEmit"
+			],
+			"group": "build"
+		},
+		{
+			"label": "ad-hoc: typecheck",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"tsc",
+				"--noEmit"
+			],
+			"group": "build"
+		},
+		{
+			"label": "ad-hoc: typecheck",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"tsc",
+				"--noEmit"
+			],
+			"group": "build"
+		},
+		{
+			"label": "ad-hoc: typecheck",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"tsc",
+				"--noEmit"
+			],
+			"group": "build"
+		},
+		{
+			"label": "ad-hoc: typecheck",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"tsc",
+				"--noEmit"
+			],
+			"group": "build"
+		},
+		{
+			"label": "ad-hoc: typecheck",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"tsc",
+				"--noEmit"
+			],
+			"group": "build"
+		},
+		{
+			"label": "ad-hoc: typecheck:dlx",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"--package=typescript",
+				"dlx",
+				"tsc",
+				"--noEmit"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "ad-hoc: typecheck",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"tsc",
+				"--noEmit"
+			],
+			"group": "build"
+		},
+		{
+			"label": "ad-hoc: typecheck",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"tsc",
+				"--noEmit"
+			],
+			"group": "build"
+		},
+		{
+			"label": "ad-hoc: typecheck",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"tsc",
+				"--noEmit"
+			],
+			"group": "build"
+		},
+		{
+			"label": "ad-hoc: typecheck",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"tsc",
+				"--noEmit"
+			],
+			"group": "build"
+		},
+		{
+			"label": "ad-hoc: typecheck",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"tsc",
+				"--noEmit"
+			],
+			"group": "build"
+		},
+		{
+			"label": "ad-hoc: typecheck",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"tsc",
+				"--noEmit"
+			],
+			"group": "build"
+		},
+		{
+			"label": "ad-hoc: typecheck",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"tsc",
+				"--noEmit"
+			],
+			"group": "build"
+		},
+		{
+			"label": "ad-hoc: typecheck",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"tsc",
+				"--noEmit"
+			],
+			"group": "build"
+		},
+		{
+			"label": "next:build",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "ad-hoc: typecheck (agent additions)",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"tsc",
+				"--noEmit"
+			],
+			"group": "build"
+		},
+		{
+			"label": "next:build (validate meeting)",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"build"
+			],
+			"group": "build"
+		},
+		{
+			"label": "ad-hoc: typecheck (ii-agent hooks)",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"--filter",
+				"./iiagent/ii-agent/frontend",
+				"tsc",
+				"--noEmit"
+			],
+			"group": "build"
+		},
+		{
+			"label": "ad-hoc: typecheck (ii-agent hooks)",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"--filter",
+				"./iiagent/ii-agent/frontend",
+				"tsc",
+				"--noEmit"
+			],
+			"group": "build"
+		},
+		{
+			"label": "ad-hoc: typecheck (ii-agent editor)",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"--filter",
+				"./iiagent/ii-agent/frontend",
+				"tsc",
+				"--noEmit"
+			],
+			"group": "build"
+		},
+		{
+			"label": "next:build (ii-agent frontend)",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"--filter",
+				"./iiagent/ii-agent/frontend",
+				"build"
+			],
+			"group": "build"
+		}
+	]
+}

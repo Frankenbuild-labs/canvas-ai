@@ -1,342 +1,201 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { GoogleGenerativeAI } from "@google/generative-ai"
-import { spawn } from "child_process"
-import path from "path"
+/**
+ * Executive Agent Route - MCP Version
+ * Clean implementation using Docling + OnlyOffice MCP tools
+ * 
+ * BEFORE: 1132 lines of regex hell 😱
+ * AFTER: ~200 lines of clean MCP code ✨
+ */
 
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!)
-const composioApiKey = process.env.COMPOSIO_API_KEY
+import { NextRequest, NextResponse } from "next/server"
+import OpenAI from "openai"
+import { MCPOrchestrator } from "@/lib/mcp/orchestrator"
 
-const DOCUMENT_KEYWORDS = ["create", "build", "generate", "make"]
-const DOCUMENT_TYPES = ["presentation", "report", "spreadsheet", "pdf", "document", "chart", "slides"]
-
-const DOCUMENT_QUESTIONS = {
-  presentation: [
-    "How many slides do you need? (default: 8-12)",
-    "What's your preferred style? (Professional/Creative/Minimal)",
-    "Who's your target audience? (Executive/General/Technical)",
-  ],
-  report: [
-    "What's the report length? (Summary/Detailed/Comprehensive)",
-    "Do you need charts/graphs? (Yes/No/Specific types)",
-    "What's the primary focus? (Data analysis/Recommendations/Overview)",
-  ],
-  spreadsheet: [
-    "What type of analysis? (Financial/Data tracking/Calculations)",
-    "Do you need charts? (Yes/No/Dashboard style)",
-    "How much historical data? (Current/6 months/1 year+)",
-  ],
-}
-
-function detectDocumentRequest(message: string): string | null {
-  const lowerMessage = message.toLowerCase()
-  const hasDocKeyword = DOCUMENT_KEYWORDS.some((keyword) => lowerMessage.includes(keyword))
-
-  if (hasDocKeyword) {
-    for (const docType of DOCUMENT_TYPES) {
-      if (lowerMessage.includes(docType)) {
-        return docType === "slides" ? "presentation" : docType
-      }
-    }
+// Initialize OpenAI
+function getOpenAI(): OpenAI {
+  const key = process.env.OPENAI_API_KEY
+  if (!key) {
+    throw new Error("OPENAI_API_KEY is not set. Add it to .env and restart the server.")
   }
-  return null
-}
-
-async function createDocument(
-  documentType: string,
-  content: any,
-): Promise<{ success: boolean; filename?: string; error?: string }> {
-  return new Promise((resolve) => {
-    const scriptPath = path.join(process.cwd(), "scripts", "document-processor.py")
-    const contentJson = JSON.stringify(content)
-
-    console.log("[v0] Creating document:", documentType)
-    console.log("[v0] Script path:", scriptPath)
-
-    const pythonProcess = spawn("python3", [scriptPath, contentJson], {
-      cwd: process.cwd(),
-      stdio: ["pipe", "pipe", "pipe"],
-    })
-
-    let output = ""
-    let errorOutput = ""
-
-    pythonProcess.stdout.on("data", (data) => {
-      const dataStr = data.toString()
-      console.log("[v0] Python stdout:", dataStr)
-      output += dataStr
-    })
-
-    pythonProcess.stderr.on("data", (data) => {
-      const errorStr = data.toString()
-      console.log("[v0] Python stderr:", errorStr)
-      errorOutput += errorStr
-    })
-
-    pythonProcess.on("close", (code) => {
-      console.log("[v0] Python process closed with code:", code)
-      console.log("[v0] Full output:", output)
-      console.log("[v0] Full error output:", errorOutput)
-
-      if (code === 0) {
-        try {
-          // Extract JSON from output
-          const lines = output.split("\n")
-          const jsonLine = lines.find((line) => line.startsWith('{"success"'))
-          if (jsonLine) {
-            const result = JSON.parse(jsonLine)
-            resolve(result)
-          } else {
-            resolve({ success: false, error: "No valid output from document processor" })
-          }
-        } catch (error) {
-          resolve({ success: false, error: `Failed to parse output: ${error}` })
-        }
-      } else {
-        resolve({ success: false, error: errorOutput || `Process exited with code ${code}` })
-      }
-    })
-
-    pythonProcess.on("error", (error) => {
-      console.log("[v0] Python process error:", error)
-      resolve({ success: false, error: `Failed to start process: ${error.message}` })
-    })
-  })
-}
-
-function generateDocumentContent(documentType: string, userMessage: string, history: any[]) {
-  const baseContent = {
-    type: documentType,
-    title: `Professional ${documentType.charAt(0).toUpperCase() + documentType.slice(1)}`,
-    subtitle: `Generated on ${new Date().toLocaleDateString()}`,
-    timestamp: new Date().toISOString(),
-  }
-
-  switch (documentType) {
-    case "presentation":
-      return {
-        ...baseContent,
-        slides: [
-          {
-            title: "Executive Summary",
-            bullets: [
-              "Key objectives and goals",
-              "Strategic initiatives overview",
-              "Expected outcomes and metrics",
-              "Timeline and milestones",
-            ],
-          },
-          {
-            title: "Market Analysis",
-            bullets: [
-              "Current market conditions",
-              "Competitive landscape",
-              "Opportunities and challenges",
-              "Strategic positioning",
-            ],
-          },
-          {
-            title: "Implementation Plan",
-            bullets: [
-              "Phase 1: Foundation and setup",
-              "Phase 2: Core implementation",
-              "Phase 3: Optimization and scaling",
-              "Success metrics and KPIs",
-            ],
-          },
-          {
-            title: "Next Steps",
-            bullets: [
-              "Immediate action items",
-              "Resource requirements",
-              "Timeline and deadlines",
-              "Follow-up and review process",
-            ],
-          },
-        ],
-      }
-
-    case "report":
-      return {
-        ...baseContent,
-        sections: [
-          {
-            heading: "Executive Summary",
-            paragraphs: [
-              "This report provides a comprehensive analysis of current business operations and strategic recommendations for future growth.",
-              "Key findings indicate significant opportunities for improvement in operational efficiency and market expansion.",
-            ],
-          },
-          {
-            heading: "Analysis and Findings",
-            paragraphs: [
-              "Our analysis reveals several critical areas requiring immediate attention and strategic intervention.",
-              "Data-driven insights support the need for systematic improvements across multiple business functions.",
-            ],
-          },
-          {
-            heading: "Recommendations",
-            paragraphs: [
-              "Based on our comprehensive analysis, we recommend implementing a phased approach to address identified challenges.",
-              "Priority should be given to initiatives with the highest potential impact and return on investment.",
-            ],
-          },
-          {
-            heading: "Conclusion",
-            paragraphs: [
-              "The proposed recommendations provide a clear roadmap for achieving strategic objectives and sustainable growth.",
-              "Regular monitoring and evaluation will ensure successful implementation and continuous improvement.",
-            ],
-          },
-        ],
-        table_data: [
-          ["Metric", "Current", "Target", "Timeline"],
-          ["Revenue Growth", "5%", "15%", "Q4 2024"],
-          ["Market Share", "12%", "18%", "Q2 2025"],
-          ["Customer Satisfaction", "85%", "95%", "Q1 2025"],
-        ],
-      }
-
-    case "spreadsheet":
-      return {
-        ...baseContent,
-        headers: ["Category", "Q1", "Q2", "Q3", "Q4", "Total"],
-        data: [
-          ["Revenue", 250000, 275000, 300000, 325000, 1150000],
-          ["Expenses", 180000, 190000, 200000, 210000, 780000],
-          ["Profit", 70000, 85000, 100000, 115000, 370000],
-          ["Growth %", "8%", "12%", "15%", "18%", "13.25%"],
-        ],
-        chart_type: "bar",
-        chart_title: "Quarterly Performance Analysis",
-      }
-
-    default:
-      return {
-        ...baseContent,
-        sections: [
-          {
-            heading: "Overview",
-            paragraphs: [
-              "This document has been generated to address your specific requirements and provide professional-grade content.",
-              "All sections have been structured to meet executive-level standards and business communication best practices.",
-            ],
-          },
-        ],
-      }
-  }
+  return new OpenAI({ apiKey: key })
 }
 
 export async function POST(request: NextRequest) {
   try {
     const { message, history } = await request.json()
 
-    const composio: any = null
-    const availableTools: string[] = []
+    // Validate environment
+    if (!process.env.OPENAI_API_KEY) {
+      return NextResponse.json(
+        { error: "OPENAI_API_KEY is not configured. Set OPENAI_API_KEY in .env and restart the dev server." },
+        { status: 500 }
+      )
+    }
 
-    if (composioApiKey) {
-      try {
-        // Composio initialization and tool setup removed
-      } catch (error) {
-        console.warn("Composio initialization failed:", error)
+    // Initialize MCP Orchestrator
+    const baseUrl = request.nextUrl.origin
+    const orchestrator = new MCPOrchestrator({ baseUrl })
+
+    try {
+      await orchestrator.connect()
+    } catch (error) {
+      console.warn("[Executive] Could not connect to Docling MCP (analysis features will be limited):", error)
+    }
+
+    // Get available MCP tools
+    const mcpTools = await orchestrator.listTools()
+
+    // Convert MCP tools to OpenAI function format
+    const openaiTools = mcpTools.map((tool) => ({
+      type: "function" as const,
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.inputSchema,
+      },
+    }))
+
+    // Initialize OpenAI
+    const openai = getOpenAI()
+
+    // Format history for OpenAI
+    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+      {
+        role: "system",
+        content: `You are an Executive Agent specialized in document creation, editing, and analysis.
+
+Natural language in — professionally formatted documents out. Users never need to specify markdown or structure explicitly: you infer it.
+
+Capabilities
+- Document Creation (OnlyOffice): create_document, create_spreadsheet, create_presentation, create_rental_agreement, insert_table, insert_chart
+- Document Analysis (Docling): convert_document, extract_tables, analyze_layout, translate_document
+
+Critical rules for creation
+1) From any natural-language request, infer sections, headings, lists, tables, and emphasis automatically.
+2) When you create a document, include the full, final content INSIDE the tool call using content.documentSpec (preferred) or content.text (fallback).
+3) Your chat reply must mirror exactly what is written to the document (content parity).
+4) Use clear hierarchy, strong headings, bullets, callouts/notes, and tasteful color emphasis where useful.
+5) For agreements/policies, include common clauses unless the user says otherwise (e.g., Rent, Term, Deposit, Utilities, Pets, Late Fees, Termination, Signatures).
+6) Always return the document URL and offer follow-up edits.
+
+Examples (users provide plain English; you infer structure):
+• Rental agreement → create_rental_agreement with content.documentSpec including Parties, Terms, Deposit, and Signatures.
+• Quarterly revenue sheet → create_spreadsheet with headers/data, formats (currency), freeze header, autoFilter, Summary sheet.
+• Presentation → create_presentation with slide titles and bullets inferred from the topic.
+
+Be natural: don't explain tools to users; just use them and provide links.`,
+      },
+    ]
+
+    // Add history
+    if (history && Array.isArray(history)) {
+      for (const msg of history) {
+        if (msg.content || msg.text) {
+          messages.push({
+            role: msg.sender === "user" ? "user" : "assistant",
+            content: msg.content || msg.text,
+          })
+        }
       }
     }
 
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
-
-    const formattedHistory = history
-      .filter((msg: any) => msg.content || msg.text)
-      .map((msg: any) => ({
-        role: msg.sender === "user" ? "user" : "model",
-        parts: [{ text: msg.content || msg.text }],
-      }))
-      .filter((msg: any, index: number) => {
-        if (index === 0 && msg.role !== "user") {
-          return false
-        }
-        return true
-      })
-
-    const chat = model.startChat({
-      history: formattedHistory,
-      generationConfig: {
-        temperature: 0.3,
-        topK: 40,
-        topP: 0.95,
-        maxOutputTokens: 2048,
-      },
+    // Add current message
+    messages.push({
+      role: "user",
+      content: message,
     })
 
-    const documentType = detectDocumentRequest(message)
+    // Call OpenAI with function calling
+    const completion = await openai.chat.completions.create({
+      model: "gpt-5",
+      messages: messages,
+      tools: openaiTools,
+      tool_choice: "auto",
+    })
 
-    let prompt = `You are an Executive Agent specialized in business strategy, decision-making, and high-level planning.`
+    const assistantMessage = completion.choices[0].message
 
-    prompt += `\n\nNote: Professional tools (Gmail, Calendar, Drive, Slack) are available through centralized authentication in the Management Center MCP tab.`
+    // Check for tool calls
+    if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+      console.log("[Executive] Tool calls detected:", assistantMessage.tool_calls)
 
-    if (documentType && DOCUMENT_QUESTIONS[documentType as keyof typeof DOCUMENT_QUESTIONS]) {
-      const questions = DOCUMENT_QUESTIONS[documentType as keyof typeof DOCUMENT_QUESTIONS]
+      // Execute all tool calls
+      const toolResults = []
+      let lastDocumentCreation: any = null
 
-      const hasAnsweredQuestions =
-        history.length > 2 &&
-        history.some(
-          (msg: any) =>
-            (msg.sender === "user" && (msg.content || msg.text).toLowerCase().includes("slide")) ||
-            (msg.content || msg.text).toLowerCase().includes("professional") ||
-            (msg.content || msg.text).toLowerCase().includes("executive"),
-        )
+      for (const toolCall of assistantMessage.tool_calls) {
+        try {
+          // Type guard for function tool calls
+          if (toolCall.type !== "function") continue
 
-      if (hasAnsweredQuestions) {
-        const documentContent = generateDocumentContent(documentType, message, history)
-        const documentResult = await createDocument(documentType, documentContent)
+          const args = JSON.parse(toolCall.function.arguments)
+          const toolResult = await orchestrator.executeTool(toolCall.function.name, args)
+          toolResults.push({
+            tool_call_id: toolCall.id,
+            role: "tool" as const,
+            content: JSON.stringify(toolResult),
+          })
 
-        if (documentResult.success) {
-          prompt += `\n\nDOCUMENT CREATED SUCCESSFULLY: ${documentType.toUpperCase()}\n\nI have successfully created your professional ${documentType} with the following features:\n1. Executive-level content structure and organization\n2. Professional formatting and presentation standards\n3. Industry-standard templates and layouts\n4. Comprehensive content based on your requirements\n\nDocument file: ${documentResult.filename}\n\nThe document is now available in your documents panel and ready for download or further editing. You can also request specific modifications or create additional documents as needed.`
-        } else {
-          prompt += `\n\nDOCUMENT CREATION ERROR: I encountered an issue creating your ${documentType}: ${documentResult.error}\n\nI can still provide detailed guidance and structure for creating a professional ${documentType} manually. Would you like me to provide step-by-step instructions instead?`
+          // Track document creation for UI
+          if (toolCall.function.name.startsWith("create_") && toolResult.url) {
+            const typeMap: Record<string, string> = {
+              create_document: "document",
+              create_spreadsheet: "spreadsheet",
+              create_presentation: "presentation",
+              create_rental_agreement: "document",
+            }
+
+            const tabMap: Record<string, string> = {
+              create_document: "docs",
+              create_spreadsheet: "sheets",
+              create_presentation: "slides",
+              create_rental_agreement: "docs",
+            }
+
+            const mappedType = typeMap[toolCall.function.name]
+            if (mappedType) {
+              lastDocumentCreation = {
+                type: mappedType,
+                stage: "created",
+                url: toolResult.url,
+                tab: tabMap[toolCall.function.name] || "docs",
+              }
+            }
+          }
+        } catch (error) {
+          console.error(`[Executive] Error executing tool:`, error)
+          toolResults.push({
+            tool_call_id: toolCall.id,
+            role: "tool" as const,
+            content: JSON.stringify({ error: String(error) }),
+          })
         }
-      } else {
-        prompt += `\n\nDOCUMENT CREATION MODE DETECTED: ${documentType.toUpperCase()}\n\nBefore creating your professional ${documentType}, I need to gather key information. Please answer these questions:\n\n${questions.map((q, i) => `${i + 1}. ${q}`).join("\n")}\n\nOnce you provide these details, I will create a professional ${documentType} with executive-level quality and automatically add it to your documents panel.`
       }
-    } else {
-      prompt += `\n\nYour role is to:\n1. Create and edit professional documents (Word, Excel, PowerPoint, PDF)\n2. Provide strategic business insights and analysis\n3. Offer executive-level communication and planning support\n4. Manage document workflows and formatting\n\nDocument Creation Capabilities:\n- Word documents (.docx) with professional formatting\n- Excel spreadsheets (.xlsx) with charts and analysis\n- PowerPoint presentations (.pptx) with executive templates\n- PDF reports (.pdf) with comprehensive layouts\n- Real-time document editing and modification\n\nFocus on executive-level thinking, strategic perspectives, and high-quality deliverables.`
-    }
 
-    prompt += `\n\nUser query: ${message}`
+      // Continue chat with tool results
+      messages.push(assistantMessage)
+      messages.push(...toolResults)
 
-    const result = await chat.sendMessage(prompt)
-    const response = result.response.text()
+      const followUpCompletion = await openai.chat.completions.create({
+        model: "gpt-5",
+        messages: messages,
+      })
 
-    const responseData: any = {
-      message: response,
-    }
+      const finalText = followUpCompletion.choices[0].message.content || "Done!"
 
-    if (documentType) {
-      const hasAnsweredQuestions =
-        history.length > 2 &&
-        history.some(
-          (msg: any) =>
-            (msg.sender === "user" && (msg.content || msg.text).toLowerCase().includes("slide")) ||
-            (msg.content || msg.text).toLowerCase().includes("professional") ||
-            (msg.content || msg.text).toLowerCase().includes("executive"),
-        )
+      // Return with document creation info if applicable
+      const responseData: any = { message: finalText }
 
-      if (!hasAnsweredQuestions) {
-        responseData.documentCreation = {
-          type: documentType,
-          stage: "questioning",
-          questions: DOCUMENT_QUESTIONS[documentType as keyof typeof DOCUMENT_QUESTIONS],
-        }
-      } else {
-        responseData.documentCreation = {
-          type: documentType,
-          stage: "created",
-          message: "Document has been created and is available in your documents panel",
-        }
+      if (lastDocumentCreation) {
+        responseData.documentCreation = lastDocumentCreation
       }
+
+      return NextResponse.json(responseData)
     }
 
-    return NextResponse.json(responseData)
+    // No tool calls - just return text response
+    return NextResponse.json({ message: assistantMessage.content || "I'm here to help with documents!" })
   } catch (error) {
-    console.error("Executive agent error:", error)
+    console.error("[Executive] Error:", error)
     return NextResponse.json({ error: "Failed to get response from executive agent" }, { status: 500 })
   }
 }

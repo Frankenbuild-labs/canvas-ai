@@ -3,9 +3,10 @@
 # dependencies
 /node_modules
 
-# next.js
+# next.js build outputs
 /.next/
 /out/
+.next-win/
 
 # production
 /build
@@ -19,9 +20,15 @@ yarn-error.log*
 # env files
 .env*
 
+# generated documents and large exports
+/public/generated/
+
 # vercel
 .vercel
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+# faceless video generator
+/external/faceless-video-generator/generator/
+/uploads/faceless-videos/

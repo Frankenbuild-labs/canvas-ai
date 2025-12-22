@@ -28,6 +28,8 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
+import { usePegasusDeviceId } from "@/hooks/use-pegasus-device-id"
+// Twitter direct OAuth: other platforms pending
 
 const SOCIAL_PLATFORMS = [
   {
@@ -45,8 +47,9 @@ const SOCIAL_PLATFORMS = [
     id: "twitter",
     name: "X (Twitter)",
     icon: (
-      <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current">
-        <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
+      <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current" aria-hidden>
+        {/* X (Twitter) mark */}
+        <path d="M18.244 2H22l-7.243 8.268L23.5 22h-7.086l-5.08-6.236L5.5 22H2l7.76-9.242L0.5 2h7.086l4.69 6.02L18.244 2z" />
       </svg>
     ),
     color: "bg-black",
@@ -56,8 +59,9 @@ const SOCIAL_PLATFORMS = [
     id: "tiktok",
     name: "TikTok",
     icon: (
-      <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current">
-        <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
+      <svg viewBox="0 0 48 48" className="w-4 h-4 fill-current" aria-hidden>
+        {/* TikTok music note */}
+        <path d="M30 4c1.9 2.1 4.1 3.4 6.9 3.7v4.8c-2.4-.1-4.7-.8-6.9-2.1v11c0 6.5-5.3 11.8-11.8 11.8S6.4 28 6.4 21.5 11.7 9.7 18.2 9.7c.9 0 1.7.1 2.5.3v5.3c-.8-.3-1.6-.5-2.5-.5-3.8 0-6.8 3-6.8 6.8s3 6.8 6.8 6.8 6.8-3 6.8-6.8V4H30z" />
       </svg>
     ),
     color: "bg-black",
@@ -100,6 +104,7 @@ const SOCIAL_PLATFORMS = [
 
 export default function SocialStationPage() {
   const searchParams = useSearchParams()
+  const { deviceId } = usePegasusDeviceId()
   const [currentDate, setCurrentDate] = useState(new Date(2025, 8, 1)) // September 2025
   const [postText, setPostText] = useState("")
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([])
@@ -120,6 +125,7 @@ export default function SocialStationPage() {
   const [connectedAccounts, setConnectedAccounts] = useState<Set<string>>(new Set())
   const [connectingAccount, setConnectingAccount] = useState<string | null>(null)
   const [postingStatus, setPostingStatus] = useState<"idle" | "posting" | "scheduling" | "saving">("idle")
+  const [statusMessage, setStatusMessage] = useState<string | null>(null)
 
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [showScheduleModal, setShowScheduleModal] = useState(false)
@@ -144,6 +150,56 @@ export default function SocialStationPage() {
     loadScheduledPosts()
   }, [])
 
+  // Initial load of connected social accounts
+  useEffect(() => {
+    const loadConnectedAccounts = async () => {
+      try {
+        const response = await fetch("/api/social/accounts")
+        const data = await response.json()
+        if (data.success && Array.isArray(data.accounts) && data.accounts.length > 0) {
+          const platforms = data.accounts.map((a: any) => a.platform)
+          setConnectedAccounts(new Set(platforms))
+        } else {
+          console.log('[schedule] empty accounts response retained previous connectedAccounts')
+        }
+      } catch (error) {
+        console.error("Failed to load connected accounts:", error)
+      }
+    }
+    loadConnectedAccounts()
+  }, [])
+
+  // Handle OAuth redirect query params (?connected=platform&success=true or ?error=oauth_failed)
+  useEffect(() => {
+    const connected = searchParams.get("connected")
+    const success = searchParams.get("success")
+    const error = searchParams.get("error")
+
+    if (connected && success === "true") {
+      setConnectedAccounts((prev) => new Set([...Array.from(prev), connected]))
+      setConnectingAccount(null)
+      setStatusMessage(`${connected} account connected.`)
+      // Clean up query params
+      try {
+        const url = new URL(window.location.href)
+        url.searchParams.delete("connected")
+        url.searchParams.delete("success")
+        window.history.replaceState(null, "", url.toString())
+      } catch (e) {
+        // ignore
+      }
+    } else if (error) {
+      setStatusMessage("Connection failed. Please try again.")
+      try {
+        const url = new URL(window.location.href)
+        url.searchParams.delete("error")
+        window.history.replaceState(null, "", url.toString())
+      } catch (e) {
+        // ignore
+      }
+    }
+  }, [searchParams])
+
   useEffect(() => {
     if (connectedAccounts.size > 0 && rightPanelTab === "social-hub" && activeTab === "feed") {
       loadSocialFeed()
@@ -157,25 +213,23 @@ export default function SocialStationPage() {
   ]
 
   const handleConnectAccount = async (platformId: string) => {
+    if (platformId !== 'twitter') {
+      setStatusMessage('Only Twitter connection supported right now.')
+      return
+    }
     setConnectingAccount(platformId)
-
     try {
-      const response = await fetch("/api/social/connect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ platform: platformId }),
-      })
-
-      const data = await response.json()
-
-      if (data.success) {
-        // Redirect to OAuth URL
-        window.location.href = data.oauthUrl
+      const r = await fetch(`/api/twitter/auth/start?platform=${platformId}`)
+      const data = await r.json()
+      if (data.redirectUrl) {
+        window.open(data.redirectUrl, '_blank', 'noopener,noreferrer')
+        setStatusMessage('Complete Twitter auth in opened window, then click Refresh.')
       } else {
-        throw new Error(data.error || "Failed to connect")
+        setStatusMessage(data.error || 'Failed to start Twitter auth')
       }
-    } catch (error) {
-      console.error("Connection error:", error)
+    } catch (e:any) {
+      setStatusMessage(e?.message || 'Twitter auth error')
+    } finally {
       setConnectingAccount(null)
     }
   }
@@ -199,17 +253,32 @@ export default function SocialStationPage() {
 
       const data = await response.json()
 
-      if (data.success) {
-        // Clear form and show success
+      // 200 = all success; 207 = partial success; others = error
+      if (response.status === 200 && data.success) {
         setPostText("")
         setUploadedMedia(null)
         setSelectedAccounts([])
+        setStatusMessage(`Posted successfully to ${selectedAccounts.length}/${selectedAccounts.length} platforms`)
         console.log("Posted successfully:", data.results)
-      } else {
-        throw new Error(data.error || "Failed to post")
+        return
       }
+
+      // Partial success handling (207)
+      if (response.status === 207 && Array.isArray(data.results)) {
+        const ok = data.results.filter((r: any) => r.success).map((r: any) => r.platform)
+        const fail = data.results.filter((r: any) => !r.success).map((r: any) => `${r.platform}${r.error ? `: ${r.error}` : ""}`)
+        setStatusMessage(
+          `Partial success. Succeeded: ${ok.join(", ") || "none"}. Failed: ${fail.join(", ") || "none"}.`
+        )
+        console.warn("Partial post results:", data.results)
+        return
+      }
+
+      // Hard failure
+      throw new Error(data?.error || "Failed to post")
     } catch (error) {
       console.error("Post error:", error)
+      setStatusMessage(error instanceof Error ? error.message : "Failed to post")
     } finally {
       setPostingStatus("idle")
     }
@@ -507,7 +576,7 @@ export default function SocialStationPage() {
           {/* Connected Accounts */}
           <div className="mb-3">
             <p className="text-sm text-gray-400 mb-2">Connected Accounts</p>
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex gap-2 flex-wrap items-center">
               {SOCIAL_PLATFORMS.map((platform) => {
                 const isConnected = connectedAccounts.has(platform.id)
                 const isConnecting = connectingAccount === platform.id
@@ -530,16 +599,14 @@ export default function SocialStationPage() {
                     disabled={isConnecting}
                     className={`relative w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium transition-all ${
                       isConnected
-                        ? `${platform.color} ${isSelected ? "ring-2 ring-teal-400" : "hover:scale-105"}`
+                        ? `bg-green-600 ${isSelected ? "ring-2 ring-teal-400" : "hover:bg-green-700"}`
                         : "bg-gray-700 hover:bg-gray-600"
                     }`}
                     title={`${platform.name} ${isConnected ? (isSelected ? "(Selected)" : "(Connected)") : "(Click to connect)"}`}
                   >
                     {isConnecting ? <Loader2 className="w-3 h-3 animate-spin" /> : platform.icon}
                     {isConnected && (
-                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border border-gray-800">
-                        <CheckCircle className="w-2 h-2 text-white m-0.5" />
-                      </div>
+                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border border-gray-800" />
                     )}
                   </button>
                 )
@@ -549,6 +616,9 @@ export default function SocialStationPage() {
               <p className="text-xs text-teal-400 mt-1">
                 {selectedAccounts.length} platform{selectedAccounts.length > 1 ? "s" : ""} selected for posting
               </p>
+            )}
+            {statusMessage && (
+              <p className="text-xs text-gray-300 mt-1">{statusMessage}</p>
             )}
           </div>
 
@@ -585,6 +655,7 @@ export default function SocialStationPage() {
               <button
                 onClick={removeMedia}
                 className="absolute top-2 right-2 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center text-white hover:bg-red-600"
+                aria-label="Remove media"
               >
                 <X className="w-3 h-3" />
               </button>
@@ -706,6 +777,7 @@ export default function SocialStationPage() {
                 size="icon"
                 onClick={() => navigateMonth("prev")}
                 className="text-gray-400 hover:text-white h-8 w-8"
+                title="Previous month"
               >
                 <ChevronLeft className="w-4 h-4" />
               </Button>
@@ -715,6 +787,7 @@ export default function SocialStationPage() {
                 size="icon"
                 onClick={() => navigateMonth("next")}
                 className="text-gray-400 hover:text-white h-8 w-8"
+                title="Next month"
               >
                 <ChevronRight className="w-4 h-4" />
               </Button>
@@ -725,6 +798,7 @@ export default function SocialStationPage() {
             <div className="relative">
               <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
               <Input
+                aria-label="Search events"
                 placeholder="Search events..."
                 className="bg-gray-900 border-gray-700 text-white placeholder-gray-500 pl-10 w-48 h-8 text-sm"
               />
@@ -815,7 +889,7 @@ export default function SocialStationPage() {
 
               {/* Show Completed Checkbox */}
               <div className="flex items-center space-x-2">
-                <Checkbox id="show-completed" checked={showCompleted} onCheckedChange={setShowCompleted} />
+                <Checkbox id="show-completed" checked={showCompleted} onCheckedChange={checked => setShowCompleted(checked === true)} />
                 <label htmlFor="show-completed" className="text-sm text-gray-400">
                   Show completed
                 </label>
@@ -1067,6 +1141,9 @@ export default function SocialStationPage() {
                     value={scheduleTime}
                     onChange={(e) => setScheduleTime(e.target.value)}
                     className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-white"
+                    aria-label="Schedule time"
+                    title="Schedule time"
+                    placeholder="Select time"
                   />
                 </div>
 

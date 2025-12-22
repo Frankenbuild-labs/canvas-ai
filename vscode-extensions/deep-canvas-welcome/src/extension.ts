@@ -79,10 +79,10 @@ async function createVibeWorkspace() {
 
 ## Getting Started with Deep Canvas AI
 
-This is your personal workspace for AI-powered development with Roo Code.
+This is your personal workspace for development.
 
 ### Quick Start:
-1. Use the **Vibe** button in the chat to interact with Roo Code
+1. Use the embedded VS Code to work on your projects
 2. Create files and folders for your projects
 3. Let AI assist you with coding tasks
 
@@ -104,7 +104,7 @@ Happy coding! ✨
 
 Start building something amazing here!
 
-Ask Roo Code to help you create:
+Create projects like:
 - Web applications
 - Scripts and utilities  
 - Documentation
@@ -244,7 +244,7 @@ function getWelcomeContent(): string {
             <div class="welcome-card" onclick="createWorkspace()">
                 <div class="card-icon">🚀</div>
                 <div class="card-title">Start Vibe Workspace</div>
-                <div class="card-description">Create a new AI-powered workspace with Roo Code integration</div>
+                <div class="card-description">Create a new workspace</div>
             </div>
             
             <div class="welcome-card" onclick="openFolder()">

@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
   try {
     const { message, history } = await request.json()
 
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
+  const model = genAI.getGenerativeModel({ model: "models/gemini-2.5-flash" })
 
     const formattedHistory = history
       .filter((msg: any) => msg.content || msg.text)

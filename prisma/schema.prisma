@@ -1,0 +1,239 @@
+// Prisma schema for LeadGen persistence
+// Adjust datasource provider/url as needed.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model LeadGenSession {
+  id           String   @id @default(cuid())
+  userId       String?  // future foreign key to users table
+  status       SessionStatus @default(PENDING)
+  startedAt    DateTime @default(now())
+  finishedAt   DateTime?
+  depth        String
+  targetRole   String
+  industry     String
+  location     String?
+  keywords     String
+  includeEmail Boolean   @default(false)
+  includePhone Boolean   @default(false)
+  providers    LeadProviderUsage[]
+  leads        Lead[]
+
+  @@index([status])
+  @@index([userId])
+  @@index([startedAt])
+}
+
+// Voice cloning and TTS models
+model VoiceClone {
+  id                   Int      @id @default(autoincrement())
+  userId               String   @map("user_id")
+  name                 String
+  sampleAudioUrl       String   @map("sample_audio_url")
+  audioDurationSeconds Float    @map("audio_duration_seconds")
+  transcript           String?  
+  status               String
+  playhtVoiceId        String?  @map("playht_voice_id") // stores Fish Speech reference id
+  voiceManifestUrl     String?  @map("voice_manifest_url")
+  errorMessage         String?  @map("error_message")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@map("voice_clones")
+}
+
+model VoiceUsageTracking {
+  id                Int      @id @default(autoincrement())
+  userId            String   @map("user_id")
+  monthYear         String   @map("month_year")
+  charactersUsed    Int      @default(0) @map("characters_used")
+  generationsCount  Int      @default(0) @map("generations_count")
+  clonesCount       Int      @default(0) @map("clones_count")
+  isByok            Boolean  @default(false) @map("is_byok")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, monthYear])
+  @@map("voice_usage_tracking")
+}
+
+model VoiceFavorite {
+  id         Int      @id @default(autoincrement())
+  userId     String   @map("user_id")
+  voiceId    String   @map("voice_id")
+  voiceName  String   @map("voice_name")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, voiceId])
+  @@index([userId])
+  @@map("voice_favorites")
+}
+
+model TTSSeneration { // mapped to tts_generations (typo in name kept distinct from raw SQL usage via mapping)
+  id                   Int      @id @default(autoincrement())
+  userId               String   @map("user_id")
+  textContent          String   @map("text_content")
+  voiceId              String   @map("voice_id")
+  voiceName            String   @map("voice_name")
+  audioUrl             String   @map("audio_url")
+  audioDurationSeconds Float    @map("audio_duration_seconds")
+  settings             Json     @map("settings")
+  characterCount       Int      @map("character_count")
+  status               String
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("tts_generations")
+}
+
+model VoicePremadeRef {
+  voiceId       String   @id @map("voice_id")
+  name          String
+  sampleUrl     String   @map("sample_url")
+  referenceId   String   @map("reference_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("voice_premade_refs")
+}
+
+enum SessionStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  ERROR
+}
+
+model LeadProviderUsage {
+  id         String   @id @default(cuid())
+  session    LeadGenSession @relation(fields: [sessionId], references: [id])
+  sessionId  String
+  providerId String
+  createdAt  DateTime @default(now())
+
+  @@unique([sessionId, providerId])
+}
+
+model Lead {
+  id             String   @id @default(cuid())
+  session        LeadGenSession @relation(fields: [sessionId], references: [id])
+  sessionId      String
+  name           String
+  title          String
+  company        String
+  email          String?
+  phone          String?
+  location       String?
+  confidenceScore Int
+  sourcePlatform String
+  sourceUrl      String?
+  tags           String[]
+  createdAt      DateTime @default(now())
+
+  // Basic relevance indexing
+  @@index([company])
+  @@index([title])
+  @@index([confidenceScore])
+}
+
+// Social accounts for platforms like Twitter (X)
+model SocialAccount {
+  id                String   @id @default(cuid())
+  userId            String   @map("user_id")
+  platform          String
+  platformUserId    String   @map("platform_user_id")
+  username          String?
+  displayName       String?
+  accessToken       String   @map("access_token")
+  refreshToken      String?  @map("refresh_token")
+  tokenExpiresAt    DateTime? @map("token_expires_at")
+  isActive          Boolean  @default(true) @map("is_active")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([platform])
+  @@unique([platform, platformUserId])
+  @@map("social_accounts")
+}
+
+// Voicemail messages saved when agents take messages or recordings complete
+model VoicemailMessage {
+  id               Int      @id @default(autoincrement())
+  agentId          String?  @map("agent_id")
+  callSid          String?  @map("call_sid")
+  fromNumber       String   @map("from_number")
+  toNumber         String   @map("to_number")
+  mediaUrl         String?  @map("media_url")
+  durationSeconds  Int?     @map("duration_seconds")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@index([toNumber])
+  @@index([fromNumber])
+  @@index([createdAt])
+  @@map("voicemail_messages")
+}
+
+// SignalWire voice agents registry
+model SignalwireAgent {
+  id              String   @id // generated in application code (randomUUID)
+  userId          String   @map("user_id")
+  agentName       String   @map("agent_name")
+  prompt          String
+  assignedNumber  String   @map("assigned_number")
+  settings        Json     @default("{}")
+  status          String   @default("inactive")
+  lastActivatedAt DateTime? @map("last_activated_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("signalwire_agents")
+}
+
+// Management Center file uploads
+model ManagementFile {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  fileName     String   @map("file_name")
+  fileType     String   @map("file_type") // MIME type
+  fileCategory String   @map("file_category") // documents, images, videos, audio, other
+  fileSize     BigInt   @map("file_size") // bytes
+  storagePath  String   @map("storage_path") // Supabase storage path
+  storageUrl   String   @map("storage_url") // public URL
+  tags         String[] @default([])
+  metadata     Json?    // additional metadata (dimensions, duration, etc)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([fileCategory])
+  @@map("management_files")
+}
+
+// Memory items (notes, files, images)
+model MemoryItem {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  kind        String   // note, file, image
+  title       String?
+  content     String?  // for notes
+  fileUrl     String?  @map("file_url") // for files/images
+  fileName    String?  @map("file_name")
+  fileType    String?  @map("file_type")
+  metadata    Json?    // additional metadata
+  tags        String[] @default([])
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([kind])
+  @@map("memory_items")
+}

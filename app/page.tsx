@@ -8,12 +8,12 @@ import ChatArea from "@/components/chat/chat-area"
 import RightPanel from "@/components/chat/right-panel"
 import DocumentsPanel from "@/components/documents/documents-panel"
 import SecondaryPanel from "@/components/secondary/secondary-panel"
-import ArchagentSandbox from "@/components/iiagent/archagent-sandbox"
+import VibeBuilderContainer from "@/components/agent-builder/vibe-builder-container"
 
 
 
 const BlankContainer = ({ togglePanel }: { togglePanel: () => void }) => {
-  const [activeTab, setActiveTab] = useState<'editor' | 'sandbox'>('editor')
+  const [activeTab, setActiveTab] = useState<'editor'>('editor')
 
   return (
     <div className="w-[65%] bg-card border-l flex flex-col">
@@ -30,16 +30,6 @@ const BlankContainer = ({ togglePanel }: { togglePanel: () => void }) => {
           >
             Editor
           </button>
-          <button
-            onClick={() => setActiveTab('sandbox')}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              activeTab === 'sandbox' 
-                ? 'bg-primary text-primary-foreground' 
-                : 'hover:bg-accent hover:text-accent-foreground'
-            }`}
-          >
-            Sandbox
-          </button>
         </div>
         <button onClick={togglePanel} className="p-1 text-muted-foreground hover:text-foreground transition-colors">
           ×
@@ -47,12 +37,9 @@ const BlankContainer = ({ togglePanel }: { togglePanel: () => void }) => {
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 bg-background">
+      <div className="flex-1 bg-background overflow-hidden">
         {activeTab === 'editor' && (
           <EmbeddedVSCode url={VSCODE_URL} />
-        )}
-        {activeTab === 'sandbox' && (
-          <ArchagentSandbox />
         )}
       </div>
     </div>
@@ -65,6 +52,7 @@ const Home = () => {
   const [isSecondaryPanelOpen, setIsSecondaryPanelOpen] = useState(false)
   const [isDocumentsPanelOpen, setIsDocumentsPanelOpen] = useState(false)
   const [isSandboxContainerOpen, setIsSandboxContainerOpen] = useState(false)
+  const [isVibeBuilderOpen, setIsVibeBuilderOpen] = useState(false)
 
   const toggleLeftPanel = () => setIsLeftPanelOpen(!isLeftPanelOpen)
   const toggleRightPanel = () => setIsRightPanelOpen(!isRightPanelOpen)
@@ -94,6 +82,20 @@ const Home = () => {
       setIsRightPanelOpen(true)
       setIsSecondaryPanelOpen(false)
       setIsDocumentsPanelOpen(false)
+      setIsVibeBuilderOpen(false)
+    } else {
+      setIsLeftPanelOpen(true)
+    }
+  }
+
+  const toggleVibeBuilder = () => {
+    setIsVibeBuilderOpen(!isVibeBuilderOpen)
+    if (!isVibeBuilderOpen) {
+      setIsLeftPanelOpen(false)
+      setIsRightPanelOpen(true)
+      setIsSecondaryPanelOpen(false)
+      setIsDocumentsPanelOpen(false)
+      setIsSandboxContainerOpen(false)
     } else {
       setIsLeftPanelOpen(true)
     }
@@ -101,7 +103,7 @@ const Home = () => {
 
   const renderRightContent = () => {
     if (isSecondaryPanelOpen) {
-      return <SecondaryPanel isOpen={isSecondaryPanelOpen} onClose={toggleRightPanel} />
+      return <SecondaryPanel isOpen={isSecondaryPanelOpen} onCloseAction={toggleRightPanel} />
     }
     if (isDocumentsPanelOpen) {
       return <DocumentsPanel togglePanel={toggleRightPanel} />
@@ -109,7 +111,10 @@ const Home = () => {
     if (isSandboxContainerOpen) {
       return <BlankContainer togglePanel={toggleSandboxContainer} />
     }
-    return <RightPanel togglePanel={toggleRightPanel} />
+    if (isVibeBuilderOpen) {
+      return <VibeBuilderContainer togglePanelAction={toggleVibeBuilder} />
+    }
+    return <RightPanel togglePanelAction={toggleRightPanel} />
   }
 
   return (
@@ -126,6 +131,8 @@ const Home = () => {
         toggleDocumentsPanelAction={toggleDocumentsPanel}
         isSandboxContainerOpen={isSandboxContainerOpen}
         toggleSandboxContainerAction={toggleSandboxContainer}
+        isVibeBuilderOpen={isVibeBuilderOpen}
+        toggleVibeBuilderAction={toggleVibeBuilder}
       />
       {isRightPanelOpen && renderRightContent()}
     </main>

@@ -1,14 +1,17 @@
 // Job queue system for scheduled social media posts
 import { DatabaseService, type ScheduledPost } from "./database"
 import { decryptToken, isTokenExpired } from "./auth-utils"
+import { Queue } from "bullmq"
+import IORedis from "ioredis"
+import { postViaComposio } from "@/lib/connections/broker"
 
 export interface PostJob {
   id: string
-  scheduledPostId: number
-  userId: number
+  scheduledPostId: string
+  userId: string
   platforms: string[]
   content: string
-  mediaUrl?: string
+  mediaUrls?: string[]
   scheduleTime: Date
   retryCount: number
   maxRetries: number
@@ -36,8 +39,8 @@ export class JobQueue {
       userId: scheduledPost.user_id,
       platforms: scheduledPost.platforms,
       content: scheduledPost.content,
-      mediaUrl: scheduledPost.media_url,
-      scheduleTime: scheduledPost.schedule_time,
+      mediaUrls: scheduledPost.media_urls,
+      scheduleTime: scheduledPost.scheduled_for,
       retryCount: 0,
       maxRetries: 3,
     }
@@ -45,7 +48,20 @@ export class JobQueue {
     this.jobs.set(jobId, job)
 
     // Calculate delay until scheduled time
-    const delay = scheduledPost.schedule_time.getTime() - Date.now()
+    const delay = scheduledPost.scheduled_for.getTime() - Date.now()
+
+    // If REDIS_URL is present, enqueue into BullMQ instead of in-process timers
+    try {
+      if (process.env.REDIS_URL) {
+        const connection = new IORedis(process.env.REDIS_URL)
+        const queue = new Queue("social-posts", { connection })
+        await queue.add("post", job, { delay: Math.max(0, delay) })
+        console.log(`[JobQueue] Enqueued job ${jobId} in BullMQ (delay=${delay}ms)`) 
+        return jobId
+      }
+    } catch (e) {
+      console.warn("JobQueue: failed to enqueue to BullMQ, falling back to in-process scheduler", e)
+    }
 
     if (delay <= 0) {
       // Execute immediately if scheduled time has passed
@@ -59,7 +75,7 @@ export class JobQueue {
       this.timers.set(jobId, timer)
     }
 
-    console.log(`[JobQueue] Scheduled post job ${jobId} for ${scheduledPost.schedule_time}`)
+    console.log(`[JobQueue] Scheduled post job ${jobId} for ${scheduledPost.scheduled_for}`)
     return jobId
   }
 
@@ -74,112 +90,7 @@ export class JobQueue {
     console.log(`[JobQueue] Executing job ${jobId}`)
 
     try {
-      // Update status to posting
-      await DatabaseService.updateScheduledPostStatus(job.scheduledPostId, "posting")
-
-      // Get user's connected accounts
-      const userAccounts = await DatabaseService.getUserSocialAccounts(job.userId)
-      const accountMap = new Map(userAccounts.map((acc) => [acc.platform, acc]))
-
-      const results = []
-
-      for (const platform of job.platforms) {
-        try {
-          const account = accountMap.get(platform)
-          if (!account) {
-            results.push({
-              platform,
-              success: false,
-              error: `${platform} account not connected`,
-            })
-            continue
-          }
-
-          if (isTokenExpired(account.token_expires_at)) {
-            results.push({
-              platform,
-              success: false,
-              error: `${platform} token expired`,
-            })
-            continue
-          }
-
-          const accessToken = decryptToken(account.access_token)
-          const result = await this.postToPlatform(platform, job.content, job.mediaUrl, accessToken)
-
-          // Save successful post result
-          await DatabaseService.savePostResult({
-            scheduled_post_id: job.scheduledPostId,
-            platform,
-            platform_post_id: result.id || result.data?.id,
-            status: "success",
-            posted_at: new Date(),
-          })
-
-          results.push({
-            platform,
-            success: true,
-            data: result,
-          })
-        } catch (error) {
-          // Save failed post result
-          await DatabaseService.savePostResult({
-            scheduled_post_id: job.scheduledPostId,
-            platform,
-            status: "failed",
-            error_message: error instanceof Error ? error.message : "Unknown error",
-            posted_at: new Date(),
-          })
-
-          results.push({
-            platform,
-            success: false,
-            error: error instanceof Error ? error.message : "Unknown error",
-          })
-        }
-      }
-
-      const successCount = results.filter((r) => r.success).length
-      const totalCount = results.length
-
-      if (successCount === totalCount) {
-        // All platforms succeeded
-        await DatabaseService.updateScheduledPostStatus(job.scheduledPostId, "posted")
-        console.log(`[JobQueue] Job ${jobId} completed successfully`)
-      } else if (successCount > 0) {
-        // Partial success
-        await DatabaseService.updateScheduledPostStatus(
-          job.scheduledPostId,
-          "posted",
-          `Posted to ${successCount}/${totalCount} platforms`,
-        )
-        console.log(`[JobQueue] Job ${jobId} partially completed (${successCount}/${totalCount})`)
-      } else {
-        // All failed - retry if possible
-        if (job.retryCount < job.maxRetries) {
-          await this.retryJob(job)
-          return
-        } else {
-          await DatabaseService.updateScheduledPostStatus(
-            job.scheduledPostId,
-            "failed",
-            "All platforms failed after retries",
-          )
-          console.error(`[JobQueue] Job ${jobId} failed after ${job.maxRetries} retries`)
-        }
-      }
-    } catch (error) {
-      console.error(`[JobQueue] Error executing job ${jobId}:`, error)
-
-      if (job.retryCount < job.maxRetries) {
-        await this.retryJob(job)
-      } else {
-        await DatabaseService.updateScheduledPostStatus(
-          job.scheduledPostId,
-          "failed",
-          error instanceof Error ? error.message : "Unknown error",
-        )
-      }
+      await JobQueue.processPostJob(job)
     } finally {
       // Clean up
       this.jobs.delete(jobId)
@@ -209,104 +120,125 @@ export class JobQueue {
     this.timers.set(job.id, timer)
   }
 
-  // Post to specific platform
-  private async postToPlatform(
-    platform: string,
-    content: string,
-    mediaUrl?: string,
-    accessToken?: string,
-  ): Promise<any> {
-    switch (platform) {
-      case "instagram":
-        throw new Error("Instagram posting requires Business API setup")
+  // A static helper that can be used by external workers (BullMQ) to process jobs.
+  static async processPostJob(job: PostJob): Promise<void> {
+    console.log(`[JobQueue] processPostJob ${job.id}`)
 
-      case "twitter":
-        const twitterResponse = await fetch("https://api.twitter.com/2/tweets", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            text: content,
-            ...(mediaUrl && { media: { media_ids: [mediaUrl] } }),
-          }),
-        })
-        return twitterResponse.json()
+    try {
+      // Update status to posting
+      await DatabaseService.updateScheduledPostStatus(job.scheduledPostId, "posting")
 
-      case "facebook":
-        const facebookResponse = await fetch(`https://graph.facebook.com/v18.0/me/feed`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            message: content,
-            ...(mediaUrl && { link: mediaUrl }),
-          }),
-        })
-        return facebookResponse.json()
+      // Get user's connected accounts
+      const userAccounts = await DatabaseService.getUserSocialAccounts(job.userId)
+      const accountMap = new Map(userAccounts.map((acc) => [acc.platform, acc]))
 
-      case "linkedin":
-        const linkedinResponse = await fetch("https://api.linkedin.com/v2/ugcPosts", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            author: "urn:li:person:PERSON_ID",
-            lifecycleState: "PUBLISHED",
-            specificContent: {
-              "com.linkedin.ugc.ShareContent": {
-                shareCommentary: { text: content },
-                shareMediaCategory: "NONE",
-              },
-            },
-            visibility: {
-              "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC",
-            },
-          }),
-        })
-        return linkedinResponse.json()
+      const results: any[] = []
 
-      case "tiktok":
-        const tiktokResponse = await fetch("https://open-api.tiktok.com/share/video/upload/", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            video_url: mediaUrl,
-            text: content,
-            privacy_level: "SELF_ONLY",
-          }),
-        })
-        return tiktokResponse.json()
+      for (const platform of job.platforms) {
+        try {
+          const account = accountMap.get(platform)
+          if (!account) {
+            results.push({ platform, success: false, error: `${platform} account not connected` })
+            continue
+          }
 
-      case "youtube":
-        const youtubeResponse = await fetch("https://www.googleapis.com/youtube/v3/videos?part=snippet,status", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            snippet: {
-              title: content.substring(0, 100),
-              description: content,
-              tags: [],
-              categoryId: "22",
-            },
-            status: { privacyStatus: "private" },
-          }),
-        })
-        return youtubeResponse.json()
+          if (isTokenExpired(account.token_expires_at)) {
+            results.push({ platform, success: false, error: `${platform} token expired` })
+            continue
+          }
 
-      default:
-        throw new Error(`Unsupported platform: ${platform}`)
+          // If mirrored from Composio, use broker; otherwise, use legacy direct flow
+          let result: any = { id: null }
+          if (account.access_token === "composio") {
+            const brokerRes = await postViaComposio({
+              userId: job.userId,
+              platform,
+              content: job.content,
+              mediaUrl: job.mediaUrls?.[0],
+            })
+            if (!brokerRes.success) throw new Error(brokerRes.error || "Composio post failed")
+            result = brokerRes.data || {}
+          } else {
+            const accessToken = decryptToken(account.access_token)
+            switch (platform) {
+              case "twitter":
+                result = await fetch("https://api.twitter.com/2/tweets", {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({ text: job.content }),
+                }).then((r) => r.json())
+                break
+              default:
+                throw new Error(`Unsupported or unimplemented platform: ${platform}`)
+            }
+          }
+
+          // Save successful post result
+          const platformPostId = extractPlatformPostId(platform, result) || result.id || result.data?.id || null
+          await DatabaseService.savePostResult({
+            scheduled_post_id: job.scheduledPostId,
+            platform,
+            platform_post_id: platformPostId || undefined,
+            status: "success",
+            posted_at: new Date(),
+          })
+
+          // Cache into social_feeds so the right-panel shows immediately after scheduled publish
+          try {
+            await DatabaseService.cacheSocialFeedItem({
+              user_id: job.userId,
+              platform,
+              platform_post_id: platformPostId || `local_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,
+              content: job.content,
+              media_urls: job.mediaUrls ?? [],
+              posted_at: new Date(),
+              engagement_data: {},
+            })
+          } catch (e) {
+            console.warn(`[JobQueue] Failed to cache feed item for ${platform}:`, e)
+          }
+
+          results.push({ platform, success: true, data: result })
+        } catch (error) {
+          await DatabaseService.savePostResult({
+            scheduled_post_id: job.scheduledPostId,
+            platform,
+            status: "failed",
+            error_message: error instanceof Error ? error.message : "Unknown error",
+            posted_at: new Date(),
+          })
+
+          results.push({ platform, success: false, error: error instanceof Error ? error.message : "Unknown error" })
+        }
+      }
+
+      const successCount = results.filter((r) => r.success).length
+      const totalCount = results.length
+
+      if (successCount === totalCount) {
+        await DatabaseService.updateScheduledPostStatus(job.scheduledPostId, "posted")
+        console.log(`[JobQueue] Job ${job.id} completed successfully`)
+      } else if (successCount > 0) {
+        await DatabaseService.updateScheduledPostStatus(
+          job.scheduledPostId,
+          "posted",
+          `Posted to ${successCount}/${totalCount} platforms`,
+        )
+        console.log(`[JobQueue] Job ${job.id} partially completed (${successCount}/${totalCount})`)
+      } else {
+        await DatabaseService.updateScheduledPostStatus(job.scheduledPostId, "failed", "All platforms failed")
+        console.error(`[JobQueue] Job ${job.id} failed for all platforms`)
+      }
+    } catch (error) {
+      console.error(`[JobQueue] processPostJob error for ${job.id}:`, error)
+      await DatabaseService.updateScheduledPostStatus(
+        job.scheduledPostId,
+        "failed",
+        error instanceof Error ? error.message : "Unknown error",
+      )
     }
   }
 
@@ -336,13 +268,20 @@ export class JobQueue {
   // Initialize job queue on startup
   async initialize(): Promise<void> {
     console.log("[JobQueue] Initializing job queue...")
-
-    // Load pending scheduled posts from database
-    const pendingPosts = await DatabaseService.getScheduledPosts(0, "scheduled") // Get all users' scheduled posts
+    // Load pending scheduled posts from database across all users
+    const pendingPosts = await DatabaseService.getAllScheduledPosts("scheduled")
 
     for (const post of pendingPosts) {
-      if (post.schedule_time > new Date()) {
-        await this.schedulePost(post)
+      try {
+        // If scheduled time is in the future, schedule it. If it's in the past, execute immediately.
+        if (new Date(post.scheduled_for) > new Date()) {
+          await this.schedulePost(post)
+        } else {
+          // Execute immediately for missed schedules
+          await this.schedulePost(post)
+        }
+      } catch (e) {
+        console.error(`[JobQueue] Failed to schedule post ${post.id}:`, e)
       }
     }
 
@@ -352,3 +291,28 @@ export class JobQueue {
 
 // Export singleton instance
 export const jobQueue = JobQueue.getInstance()
+
+// Extracts a platform post id from various response shapes (used by JobQueue)
+function extractPlatformPostId(platform: string, data: any): string | null {
+  if (!data) return null
+  const p = platform.toLowerCase()
+  const candidates: any[] = [data, data?.data, data?.result, data?.post, data?.item, data?.tweet, data?.video].filter(Boolean)
+  for (const obj of candidates) {
+    try {
+      if (typeof obj?.id === "string") return obj.id
+      for (const key of Object.keys(obj)) {
+        if (/(_id|post_id|tweet_id|video_id|status_id)$/i.test(key) && typeof (obj as any)[key] === "string") {
+          return (obj as any)[key]
+        }
+      }
+    } catch {}
+  }
+  // Platform-specific fallbacks
+  try {
+    if (p === "twitter" && typeof data?.data?.id === "string") return data.data.id
+    if ((p === "facebook" || p === "instagram") && typeof data?.post_id === "string") return data.post_id
+    if (p === "linkedin" && typeof data?.data?.id === "string") return data.data.id
+    if ((p === "youtube" || p === "tiktok") && typeof data?.video_id === "string") return data.video_id
+  } catch {}
+  return null
+}

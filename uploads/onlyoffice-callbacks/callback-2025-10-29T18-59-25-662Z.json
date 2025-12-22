@@ -1,0 +1,17 @@
+{
+  "payload": {
+    "key": "aHR0cDovL2hvc3QuZG9ja2VyLmludGVybmFsOjMwMDIvZ2VuZXJhdGVkL3doYXQt",
+    "status": 1,
+    "users": [
+      "demo-user"
+    ],
+    "actions": [
+      {
+        "type": 1,
+        "userid": "demo-user"
+      }
+    ]
+  },
+  "iat": 1761764365,
+  "exp": 1761764665
+}

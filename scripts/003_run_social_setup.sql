@@ -1,11 +1,17 @@
--- First, let's check if tables exist and create them if they don't
+-- Social Setup Script
+-- NOTE: Tables are now created in 001 and 002. This script is kept for backwards compatibility.
+-- It now only ensures pgcrypto extension exists.
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- Legacy DO block removed - tables created in 001 and 002
 DO $$
 BEGIN
-    -- Create social_accounts table if it doesn't exist
+    -- Create social_accounts table if it doesn't exist (should already exist from 002)
     IF NOT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'social_accounts') THEN
         CREATE TABLE social_accounts (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            user_id UUID NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             platform VARCHAR(50) NOT NULL,
             platform_user_id VARCHAR(255) NOT NULL,
             username VARCHAR(255),
@@ -21,11 +27,11 @@ BEGIN
         CREATE INDEX idx_social_accounts_user_platform ON social_accounts(user_id, platform);
     END IF;
 
-    -- Create scheduled_posts table if it doesn't exist
+    -- Create scheduled_posts table if it doesn't exist (should already exist from 001/002)
     IF NOT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'scheduled_posts') THEN
         CREATE TABLE scheduled_posts (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            user_id UUID NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             content TEXT NOT NULL,
             media_urls TEXT[],
             platforms TEXT[] NOT NULL,
@@ -55,11 +61,11 @@ BEGIN
         CREATE INDEX idx_post_results_scheduled_post ON post_results(scheduled_post_id);
     END IF;
 
-    -- Create social_feeds table if it doesn't exist
+    -- Create social_feeds table if it doesn't exist (should already exist from 002)
     IF NOT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'social_feeds') THEN
         CREATE TABLE social_feeds (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            user_id UUID NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             platform VARCHAR(50) NOT NULL,
             platform_post_id VARCHAR(255) NOT NULL,
             content TEXT,

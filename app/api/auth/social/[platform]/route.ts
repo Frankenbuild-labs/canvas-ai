@@ -1,5 +1,4 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { DatabaseService } from "@/lib/database"
 import { encryptToken, calculateTokenExpiry, generateOAuthState } from "@/lib/auth-utils"
 
 const OAUTH_CONFIGS = {
@@ -119,11 +118,12 @@ export async function GET(request: NextRequest, { params }: { params: { platform
       console.warn(`Failed to get user profile for ${platform}:`, error)
     }
 
-    const userId = 1 // TODO: Get actual user ID from session
+  const userId = "1" // TODO: Get actual user ID from session
     const expiresAt = tokenData.expires_in ? calculateTokenExpiry(tokenData.expires_in) : undefined
 
+    const { DatabaseService } = await import("@/lib/database")
     await DatabaseService.saveSocialAccount({
-      user_id: userId,
+  user_id: userId,
       platform,
       platform_user_id: userProfile.id || userProfile.user_id,
       username: userProfile.username || userProfile.name || userProfile.screen_name,

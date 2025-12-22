@@ -1,7 +1,12 @@
 {
   "compilerOptions": {
-    "lib": ["dom", "dom.iterable", "esnext"],
-    "allowJs": true,
+    "baseUrl": ".",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "allowJs": false,
     "target": "ES6",
     "skipLibCheck": true,
     "strict": true,
@@ -11,6 +16,7 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
+    "forceConsistentCasingInFileNames": true,
     "jsx": "preserve",
     "incremental": true,
     "plugins": [
@@ -19,9 +25,39 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@app/*": ["./*"],
+      "@lib/*": ["lib/*"],
+      "@video-kit/*": ["videokit/video-starter-kit/src/*"]
     }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "include": [
+    "next-env.d.ts",
+    "types/**/*.d.ts",
+    "app/**/*.ts",
+    "app/**/*.tsx",
+    "components/**/*.ts",
+    "components/**/*.tsx",
+    "hooks/**/*.ts",
+    "hooks/**/*.tsx",
+    "lib/**/*.ts",
+    "lib/**/*.tsx",
+    "tests/**/*.ts",
+    "tests/**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next-win/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "videokit/cesdk-web-examples",
+    "videokit/video-starter-kit/temp-cesdk-examples",
+    // Exclude nested projects that have their own tsconfigs/aliases (keep starter kit src included via paths)
+    "iiagent/ii-agent/frontend/**",
+    "videokit/video-starter-kit/.next/**",
+    "videokit/video-starter-kit/node_modules/**",
+    "vscode-extensions/**",
+    "integrations-page (4)/**",
+    "emailmark/**",
+    "redagent/**"
+  ]
 }

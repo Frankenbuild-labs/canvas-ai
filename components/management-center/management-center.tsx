@@ -6,17 +6,17 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Settings, Save, Download, Bot, KeyRound, ArrowLeft, FileArchive } from "lucide-react"
 import OrchestratorTab from "@/components/management-center/orchestrator-tab"
-import McpTab from "@/components/management-center/mcp-tab"
 import ApiKeysTab from "@/components/management-center/api-keys-tab"
 import FilesTab from "@/components/management-center/files-tab"
+import MemoryTab from "@/components/management-center/memory-tab"
 import Link from "next/link"
 import { ThemeToggle } from "@/components/theme-toggle"
 
 const managementTabs = [
   { value: "orchestrator", label: "Orchestrator", icon: <Bot /> },
   { value: "files", label: "Files", icon: <FileArchive /> },
-  { value: "mcp", label: "MCP", icon: <Bot /> },
   { value: "api-keys", label: "API Keys", icon: <KeyRound /> },
+  { value: "memory", label: "Memory", icon: <Bot /> },
 ]
 
 export default function ManagementCenter() {
@@ -28,10 +28,9 @@ export default function ManagementCenter() {
         <div className="flex justify-between items-start">
           <div className="flex items-center gap-4">
             <Button variant="outline" size="icon" asChild>
-              <Link href="/">
+              <a href="/" aria-label="Back to Chat">
                 <ArrowLeft className="w-4 h-4" />
-                <span className="sr-only">Back to Chat</span>
-              </Link>
+              </a>
             </Button>
             <div>
               <h1 className="text-2xl font-bold text-foreground flex items-center">
@@ -78,11 +77,11 @@ export default function ManagementCenter() {
           <TabsContent value="files" className="h-full">
             <FilesTab />
           </TabsContent>
-          <TabsContent value="mcp" className="h-full">
-            <McpTab />
-          </TabsContent>
           <TabsContent value="api-keys">
             <ApiKeysTab />
+          </TabsContent>
+          <TabsContent value="memory" className="h-full">
+            <MemoryTab />
           </TabsContent>
         </div>
       </Tabs>

@@ -23,11 +23,88 @@ services:
       - ./docker/code-server/extensions:/home/coder/.local/share/code-server/extensions
     ports:
       - "3100:8080"   # VS Code web interface
-      - "23333:23333" # Agent Maestro proxy server
-      - "23334:23334" # Agent Maestro MCP server
+  # Agent Maestro ports removed
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz" ]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 15s
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: canvasai-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./docker/postgres/data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  onlyoffice:
+    image: onlyoffice/documentserver:8.1.1
+    container_name: onlyoffice-docserver
+    restart: unless-stopped
+    environment:
+      - JWT_ENABLED=true
+      - JWT_SECRET=${ONLYOFFICE_JWT_SECRET}
+      - JWT_HEADER=Authorization
+    ports:
+      - "8082:80"  # OnlyOffice Document Server web-apps/api at http://localhost:8082
+    volumes:
+      - ./uploads/onlyoffice-data:/var/www/onlyoffice/Data
+    healthcheck:
+      test: ["CMD", "curl", "-fsSL", "http://localhost/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  faceless-video-gen:
+    build:
+      context: ./external/faceless-video-generator
+      dockerfile: Dockerfile
+    container_name: faceless-video-generator
+    restart: unless-stopped
+    environment:
+      # OpenAI API for story generation and TTS
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      # FAL API for Flux image generation (using existing key)
+      - FAL_KEY=${FAL_KEY}
+    ports:
+      - "8005:8005"  # FastAPI service
+    volumes:
+      # Output directory for generated videos
+      - ./uploads/faceless-videos:/app/output
+      # Mount fonts if needed
+      - ./external/faceless-video-generator/fonts:/app/generator/font
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - default
+      - ./external/dia/voices:/app/voices
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    networks:
+      - default
+
+networks:
+  default:
+    name: canvasai-network

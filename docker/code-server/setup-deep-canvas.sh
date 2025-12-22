@@ -24,10 +24,10 @@ cat > /home/workspace/DeepCanvas/VibeWorkspace/README.md << 'EOF'
 
 ## Getting Started with Deep Canvas AI
 
-This is your personal workspace for AI-powered development with Roo Code.
+This is your personal workspace for development.
 
 ### Quick Start:
-1. Use the **Vibe** button in the chat to interact with Roo Code
+1. Open the embedded VS Code to work on your projects
 2. Create files and folders for your projects  
 3. Let AI assist you with coding tasks
 
@@ -45,7 +45,7 @@ This is your personal workspace for AI-powered development with Roo Code.
 - 🎮 **Games**: Simple browser games, puzzles
 - 📚 **Documentation**: Technical docs, tutorials
 
-Just ask Roo Code: *"Create a [type of project] that [does something]"*
+You can create: *"a [type of project] that [does something]"*
 
 Happy coding! ✨
 EOF
@@ -80,10 +80,10 @@ Start building something amazing here!
 
 1. **Click the Vibe button** in your chat interface
 2. **Describe your project**: "I want to build a..."
-3. **Let Roo Code help**: AI will guide you through the process
+3. **Iterate**: build and test your changes
 4. **Review and approve**: Check suggestions before proceeding
 
-Ask Roo Code to help you create any of these projects!
+Create any of these projects!
 EOF
 
 # Create workspace settings

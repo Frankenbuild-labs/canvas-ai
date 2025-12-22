@@ -1,7 +1,13 @@
 // Authentication and token management utilities
 import crypto from "crypto"
 
-const ENCRYPTION_KEY = process.env.TOKEN_ENCRYPTION_KEY || crypto.randomBytes(32).toString("hex")
+// Require a stable encryption key; do NOT fall back to random generation which breaks
+// decryption after server restarts.
+const rawKey = process.env.TOKEN_ENCRYPTION_KEY
+if (!rawKey) {
+  throw new Error("Missing TOKEN_ENCRYPTION_KEY env var (64 hex chars for 32 bytes). Set it in .env.local before starting the server.")
+}
+const ENCRYPTION_KEY = rawKey.trim()
 const ALGORITHM = "aes-256-gcm"
 
 export interface TokenData {
@@ -13,35 +19,41 @@ export interface TokenData {
 
 // Encrypt sensitive token data
 export function encryptToken(token: string): string {
-  const iv = crypto.randomBytes(16)
-  const cipher = crypto.createCipher(ALGORITHM, ENCRYPTION_KEY)
+  // AES-256-GCM requires a 32-byte key
+  const key = Buffer.from(ENCRYPTION_KEY, "hex").length === 32
+    ? Buffer.from(ENCRYPTION_KEY, "hex")
+    : crypto.createHash("sha256").update(ENCRYPTION_KEY).digest()
 
-  let encrypted = cipher.update(token, "utf8", "hex")
-  encrypted += cipher.final("hex")
+  // 12 or 16 byte IV is recommended for GCM; we use 12 bytes
+  const iv = crypto.randomBytes(12)
+  const cipher = crypto.createCipheriv(ALGORITHM, key, iv)
 
+  const encrypted = Buffer.concat([cipher.update(token, "utf8"), cipher.final()])
   const authTag = cipher.getAuthTag()
 
-  return iv.toString("hex") + ":" + authTag.toString("hex") + ":" + encrypted
+  // Return iv:tag:ciphertext as hex
+  return [iv.toString("hex"), authTag.toString("hex"), encrypted.toString("hex")].join(":")
 }
 
 // Decrypt token data
 export function decryptToken(encryptedToken: string): string {
   const parts = encryptedToken.split(":")
-  if (parts.length !== 3) {
-    throw new Error("Invalid encrypted token format")
-  }
+  if (parts.length !== 3) throw new Error("Invalid encrypted token format")
 
-  const iv = Buffer.from(parts[0], "hex")
-  const authTag = Buffer.from(parts[1], "hex")
-  const encrypted = parts[2]
+  const [ivHex, tagHex, encHex] = parts
+  const iv = Buffer.from(ivHex, "hex")
+  const authTag = Buffer.from(tagHex, "hex")
+  const encrypted = Buffer.from(encHex, "hex")
 
-  const decipher = crypto.createDecipher(ALGORITHM, ENCRYPTION_KEY)
+  const key = Buffer.from(ENCRYPTION_KEY, "hex").length === 32
+    ? Buffer.from(ENCRYPTION_KEY, "hex")
+    : crypto.createHash("sha256").update(ENCRYPTION_KEY).digest()
+
+  const decipher = crypto.createDecipheriv(ALGORITHM, key, iv)
   decipher.setAuthTag(authTag)
 
-  let decrypted = decipher.update(encrypted, "hex", "utf8")
-  decrypted += decipher.final("utf8")
-
-  return decrypted
+  const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()])
+  return decrypted.toString("utf8")
 }
 
 // Check if token is expired

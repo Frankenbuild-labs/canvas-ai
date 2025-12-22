@@ -1,4 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { DatabaseService } from "@/lib/database"
+import { jobQueue } from "@/lib/job-queue"
+import { getUserIdFromRequest } from "@/lib/auth-next"
+// Ayrshare removed. Scheduling now only persists internal job for twitter; other platforms pending.
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,20 +22,38 @@ export async function POST(request: NextRequest) {
 
     const scheduleDate = new Date(scheduleTime)
 
+    if (isNaN(scheduleDate.getTime())) {
+      return NextResponse.json({ error: "Invalid schedule time" }, { status: 400 })
+    }
+
     if (scheduleDate <= new Date()) {
       return NextResponse.json({ error: "Schedule time must be in the future" }, { status: 400 })
     }
 
-    // Return mock success response
+  // Resolve user from session/cookies/headers (falls back to test user)
+  const userId = await getUserIdFromRequest(request as any)
+
+    // Persist scheduled post (internal scheduler only; direct twitter publish when time triggers)
+    const scheduledPost = await DatabaseService.createScheduledPost({
+      user_id: userId,
+      content,
+      media_url: mediaUrl,
+      platforms,
+      schedule_time: scheduleDate,
+      status: "scheduled",
+      provider: "internal",
+    })
+
+    // Enqueue job in the in-process job queue (will schedule execution)
+    try {
+      await jobQueue.schedulePost(scheduledPost)
+    } catch (e) {
+      console.warn("Failed to schedule job in jobQueue:", e)
+    }
+
     return NextResponse.json({
       success: true,
-      scheduledPost: {
-        id: `mock-${Date.now()}`,
-        scheduleTime: scheduleDate,
-        platforms,
-        content,
-        status: "pending",
-      },
+      scheduledPost,
       message: `Post scheduled for ${scheduleDate.toLocaleString()}`,
     })
   } catch (error) {
@@ -48,36 +70,12 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    // Return mock scheduled posts data
-    const mockPosts = [
-      {
-        id: "mock-1",
-        user_id: "test-user",
-        content: "Sample scheduled post for Instagram",
-        media_urls: [],
-        platforms: ["instagram"],
-        scheduled_for: new Date(Date.now() + 24 * 60 * 60 * 1000), // Tomorrow
-        status: "pending",
-        created_at: new Date(),
-        updated_at: new Date(),
-      },
-      {
-        id: "mock-2",
-        user_id: "test-user",
-        content: "Another post for Twitter and LinkedIn",
-        media_urls: [],
-        platforms: ["twitter", "linkedin"],
-        scheduled_for: new Date(Date.now() + 48 * 60 * 60 * 1000), // Day after tomorrow
-        status: "pending",
-        created_at: new Date(),
-        updated_at: new Date(),
-      },
-    ]
+  // Resolve user from session/cookies/headers (falls back to test user)
+  const userId = await getUserIdFromRequest(request as any)
 
-    return NextResponse.json({
-      success: true,
-      posts: mockPosts,
-    })
+    // Gracefully handle missing table in dev: return empty without DB call
+    const posts = await DatabaseService.getScheduledPosts(userId)
+    return NextResponse.json({ success: true, posts })
   } catch (error) {
     console.error("Get scheduled posts error:", error)
     return NextResponse.json(

@@ -1,19 +1,16 @@
 -- Create database schema for social media management
 -- Run this script to set up the required tables
 
--- Users table for authentication (if not exists)
-CREATE TABLE IF NOT EXISTS users (
-  id SERIAL PRIMARY KEY,
-  email VARCHAR(255) UNIQUE NOT NULL,
-  name VARCHAR(255),
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
-);
+-- Required extension for gen_random_uuid()
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- NOTE: Users table is now created in 000_create_users_table.sql
+-- This script assumes users table already exists with UUID primary keys
 
 -- Social media account connections
-CREATE TABLE user_social_accounts (
-  id SERIAL PRIMARY KEY,
-  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS user_social_accounts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   platform VARCHAR(50) NOT NULL,
   platform_user_id VARCHAR(255),
   username VARCHAR(255),
@@ -27,9 +24,9 @@ CREATE TABLE user_social_accounts (
 );
 
 -- Scheduled posts
-CREATE TABLE scheduled_posts (
-  id SERIAL PRIMARY KEY,
-  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS scheduled_posts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   content TEXT NOT NULL,
   media_url TEXT,
   media_type VARCHAR(20), -- 'image', 'video', null
@@ -43,9 +40,9 @@ CREATE TABLE scheduled_posts (
 );
 
 -- Post results (track individual platform posts)
-CREATE TABLE post_results (
-  id SERIAL PRIMARY KEY,
-  scheduled_post_id INTEGER REFERENCES scheduled_posts(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS post_results (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  scheduled_post_id UUID NOT NULL REFERENCES scheduled_posts(id) ON DELETE CASCADE,
   platform VARCHAR(50) NOT NULL,
   platform_post_id VARCHAR(255), -- ID from the social platform
   status VARCHAR(20) NOT NULL, -- 'success', 'failed'
@@ -55,9 +52,9 @@ CREATE TABLE post_results (
 );
 
 -- Drafts
-CREATE TABLE post_drafts (
-  id SERIAL PRIMARY KEY,
-  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS post_drafts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   content TEXT NOT NULL,
   media_url TEXT,
   media_type VARCHAR(20),
@@ -67,9 +64,9 @@ CREATE TABLE post_drafts (
 );
 
 -- AI Influencer settings
-CREATE TABLE ai_influencer_settings (
-  id SERIAL PRIMARY KEY,
-  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS ai_influencer_settings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name VARCHAR(255) NOT NULL,
   personality TEXT NOT NULL,
   tone VARCHAR(50) NOT NULL,
@@ -82,9 +79,9 @@ CREATE TABLE ai_influencer_settings (
 );
 
 -- Social media feed cache (for displaying user's posts)
-CREATE TABLE social_feed_cache (
-  id SERIAL PRIMARY KEY,
-  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS social_feed_cache (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   platform VARCHAR(50) NOT NULL,
   platform_post_id VARCHAR(255) NOT NULL,
   content TEXT,
@@ -96,9 +93,9 @@ CREATE TABLE social_feed_cache (
 );
 
 -- Create indexes for better performance
-CREATE INDEX idx_user_social_accounts_user_platform ON user_social_accounts(user_id, platform);
-CREATE INDEX idx_scheduled_posts_user_schedule ON scheduled_posts(user_id, schedule_time);
-CREATE INDEX idx_scheduled_posts_status ON scheduled_posts(status);
-CREATE INDEX idx_post_results_scheduled_post ON post_results(scheduled_post_id);
-CREATE INDEX idx_social_feed_cache_user_platform ON social_feed_cache(user_id, platform);
-CREATE INDEX idx_social_feed_cache_posted_at ON social_feed_cache(posted_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_social_accounts_user_platform ON user_social_accounts(user_id, platform);
+CREATE INDEX IF NOT EXISTS idx_scheduled_posts_user_schedule ON scheduled_posts(user_id, schedule_time);
+CREATE INDEX IF NOT EXISTS idx_scheduled_posts_status ON scheduled_posts(status);
+CREATE INDEX IF NOT EXISTS idx_post_results_scheduled_post ON post_results(scheduled_post_id);
+CREATE INDEX IF NOT EXISTS idx_social_feed_cache_user_platform ON social_feed_cache(user_id, platform);
+CREATE INDEX IF NOT EXISTS idx_social_feed_cache_posted_at ON social_feed_cache(posted_at DESC);

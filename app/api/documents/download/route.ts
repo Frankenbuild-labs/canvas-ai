@@ -1,4 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
+// Uses request.url/search params and may perform remote fetch; ensure dynamic rendering
+export const dynamic = 'force-dynamic'
 import path from "path"
 import fs from "fs"
 
@@ -6,32 +8,58 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const filename = searchParams.get("file")
+    const src = searchParams.get("src")
 
-    if (!filename) {
-      return NextResponse.json({ error: "Filename is required" }, { status: 400 })
+    if (!filename && !src) {
+      return NextResponse.json({ error: "Provide either file or src" }, { status: 400 })
     }
 
-    // Security: Only allow files from the documents directory
-    const documentsDir = path.join(process.cwd(), "documents")
-    const filePath = path.join(documentsDir, filename)
+    // Remote proxy mode: allow select hosts
+    if (src) {
+      const allowedHosts = [
+        "raw.githubusercontent.com",
+        "githubusercontent.com",
+        "filesamples.com",
+        "file-examples.com",
+      ]
+      let url: URL
+      try {
+        url = new URL(src)
+      } catch {
+        return NextResponse.json({ error: "Invalid src URL" }, { status: 400 })
+      }
+      if (!allowedHosts.some((h) => url.hostname.endsWith(h))) {
+        return NextResponse.json({ error: "Source host not allowed" }, { status: 403 })
+      }
 
-    // Ensure the file path is within the documents directory
+      const upstream = await fetch(url.toString(), { headers: { "User-Agent": "CanvasAI-Proxy" } })
+      if (!upstream.ok || !upstream.body) {
+        return NextResponse.json({ error: `Upstream ${upstream.status}` }, { status: 502 })
+      }
+      const headers = new Headers()
+      const ct = upstream.headers.get("content-type") || "application/octet-stream"
+      headers.set("Content-Type", ct)
+      // Pass length if known
+      const len = upstream.headers.get("content-length")
+      if (len) headers.set("Content-Length", len)
+      // Suggest a filename
+      const name = path.basename(url.pathname) || "file"
+      headers.set("Content-Disposition", `attachment; filename="${name}"`)
+      return new NextResponse(upstream.body as any, { headers })
+    }
+
+    // Local file mode
+    const documentsDir = path.join(process.cwd(), "documents")
+    const filePath = path.join(documentsDir, filename!)
     if (!filePath.startsWith(documentsDir)) {
       return NextResponse.json({ error: "Invalid file path" }, { status: 403 })
     }
-
-    // Check if file exists
     if (!fs.existsSync(filePath)) {
       return NextResponse.json({ error: "File not found" }, { status: 404 })
     }
-
-    // Read the file
     const fileBuffer = fs.readFileSync(filePath)
-
-    // Determine content type based on file extension
-    const ext = path.extname(filename).toLowerCase()
+    const ext = path.extname(filename!).toLowerCase()
     let contentType = "application/octet-stream"
-
     switch (ext) {
       case ".pdf":
         contentType = "application/pdf"
@@ -46,7 +74,6 @@ export async function GET(request: NextRequest) {
         contentType = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
         break
     }
-
     return new NextResponse(fileBuffer, {
       headers: {
         "Content-Type": contentType,

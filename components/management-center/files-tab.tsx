@@ -4,97 +4,124 @@ import { Card } from "@/components/ui/card"
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Upload, FileImage, FileVideo, FileAudio, FileText, Search, LayoutGrid, List } from "lucide-react"
+import { Upload, FileImage, FileVideo, FileAudio, FileText, Search, LayoutGrid, List, Trash2, Download } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-type FileType = "image" | "video" | "audio" | "document"
+type FileType = "images" | "videos" | "audio" | "documents" | "other"
 
-type MockFile = {
+type ManagementFile = {
   id: string
-  name: string
-  type: FileType
-  size: string
-  date: string
-  url: string
-  thumbnail?: string
+  userId: string
+  fileName: string
+  fileType: string
+  fileCategory: FileType
+  fileSize: number
+  storagePath: string
+  storageUrl: string
+  tags: string[]
+  metadata?: any
+  createdAt: string
+  updatedAt: string
 }
 
-const mockFiles: MockFile[] = [
-  {
-    id: "1",
-    name: "Project_Brief.pdf",
-    type: "document",
-    size: "1.2 MB",
-    date: "2023-08-04",
-    url: "#",
-  },
-  {
-    id: "2",
-    name: "Dashboard_Preview.png",
-    type: "image",
-    size: "856 KB",
-    date: "2023-08-03",
-    url: "/placeholder.svg?width=400&height=300",
-    thumbnail: "/placeholder.svg?width=400&height=300",
-  },
-  {
-    id: "3",
-    name: "Demo_Walkthrough.mp4",
-    type: "video",
-    size: "24.5 MB",
-    date: "2023-08-02",
-    url: "#",
-  },
-  {
-    id: "4",
-    name: "Podcast_Intro.mp3",
-    type: "audio",
-    size: "3.1 MB",
-    date: "2023-08-01",
-    url: "#",
-  },
-  {
-    id: "5",
-    name: "User_Feedback.docx",
-    type: "document",
-    size: "45 KB",
-    date: "2023-07-31",
-    url: "#",
-  },
-  {
-    id: "6",
-    name: "Logo_Concept.jpg",
-    type: "image",
-    size: "1.5 MB",
-    date: "2023-07-30",
-    url: "/placeholder.svg?width=400&height=300",
-    thumbnail: "/placeholder.svg?width=400&height=300",
-  },
-]
-
 const fileTypeIcons: Record<FileType, React.ReactElement> = {
-  image: <FileImage className="w-8 h-8 text-blue-500" />,
-  video: <FileVideo className="w-8 h-8 text-red-500" />,
+  images: <FileImage className="w-8 h-8 text-blue-500" />,
+  videos: <FileVideo className="w-8 h-8 text-red-500" />,
   audio: <FileAudio className="w-8 h-8 text-purple-500" />,
-  document: <FileText className="w-8 h-8 text-green-500" />,
+  documents: <FileText className="w-8 h-8 text-green-500" />,
+  other: <FileText className="w-8 h-8 text-gray-500" />,
 }
 
 const categories = [
   { name: "All Files", filter: "all" },
-  { name: "Images", filter: "image" },
-  { name: "Videos", filter: "video" },
+  { name: "Images", filter: "images" },
+  { name: "Videos", filter: "videos" },
   { name: "Audio", filter: "audio" },
-  { name: "Documents", filter: "document" },
+  { name: "Documents", filter: "documents" },
 ]
 
 export default function FilesTab() {
   const [filter, setFilter] = useState("all")
   const [view, setView] = useState("grid")
+  const [files, setFiles] = useState<ManagementFile[]>([])
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
 
-  const filteredFiles = filter === "all" ? mockFiles : mockFiles.filter((file) => file.type === filter)
+  useEffect(() => {
+    loadFiles()
+  }, [filter])
+
+  async function loadFiles() {
+    try {
+      setLoading(true)
+      const url = `/api/management/files?category=${filter}`
+      const res = await fetch(url)
+      if (!res.ok) throw new Error("Failed to load files")
+      const data = await res.json()
+      setFiles(data.files || [])
+    } catch (error) {
+      console.error("Failed to load files:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    try {
+      setUploading(true)
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("category", filter === "all" ? "other" : filter)
+
+      const res = await fetch("/api/management/files", {
+        method: "POST",
+        body: formData,
+      })
+
+      if (!res.ok) throw new Error("Upload failed")
+
+      await loadFiles()
+      e.target.value = "" // Reset input
+    } catch (error) {
+      console.error("Upload error:", error)
+      alert("Failed to upload file")
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm("Are you sure you want to delete this file?")) return
+
+    try {
+      const res = await fetch(`/api/management/files/${id}`, {
+        method: "DELETE",
+      })
+
+      if (!res.ok) throw new Error("Delete failed")
+
+      await loadFiles()
+    } catch (error) {
+      console.error("Delete error:", error)
+      alert("Failed to delete file")
+    }
+  }
+
+  function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return bytes + " B"
+    const kb = bytes / 1024
+    if (kb < 1024) return kb.toFixed(1) + " KB"
+    const mb = kb / 1024
+    return mb.toFixed(1) + " MB"
+  }
+
+  const filteredFiles = filter === "all" ? files : files.filter((file) => file.fileCategory === filter)
 
   return (
     <div className="flex h-full">
@@ -132,40 +159,81 @@ export default function FilesTab() {
             <Button variant={view === "grid" ? "secondary" : "ghost"} size="icon" onClick={() => setView("grid")}>
               <LayoutGrid className="w-5 h-5" />
             </Button>
-            <Button className="bg-accent-primary text-primary-foreground hover:bg-accent-secondary">
+            <Button className="bg-accent-primary text-primary-foreground hover:bg-accent-secondary" disabled={uploading}>
               <Upload className="w-4 h-4 mr-2" />
-              Upload File
+              <label htmlFor="file-upload" className="cursor-pointer">
+                {uploading ? "Uploading..." : "Upload File"}
+              </label>
+              <input
+                id="file-upload"
+                type="file"
+                className="hidden"
+                onChange={handleFileUpload}
+                disabled={uploading}
+              />
             </Button>
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto">
-          <div
-            className={cn("grid gap-4", view === "grid" ? "grid-cols-2 md:grid-cols-3 lg:grid-cols-4" : "grid-cols-1")}
-          >
-            {filteredFiles.map((file) => (
-              <Card key={file.id} className="overflow-hidden">
-                <div className="h-32 bg-secondary flex items-center justify-center">
-                  {file.type === "image" && file.thumbnail ? (
-                    <img
-                      src={file.thumbnail || "/placeholder.svg"}
-                      alt={file.name}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    fileTypeIcons[file.type]
-                  )}
-                </div>
-                <div className="p-3">
-                  <p className="font-semibold text-sm truncate">{file.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {file.size} &middot; {file.date}
-                  </p>
-                </div>
-              </Card>
-            ))}
+        {loading ? (
+          <div className="flex-1 flex items-center justify-center">
+            <p className="text-muted-foreground">Loading files...</p>
           </div>
-        </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto">
+            {filteredFiles.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-64 text-center">
+                <FileText className="w-16 h-16 text-muted-foreground mb-4" />
+                <p className="text-lg font-semibold">No files yet</p>
+                <p className="text-muted-foreground">Upload your first file to get started</p>
+              </div>
+            ) : (
+              <div
+                className={cn("grid gap-4", view === "grid" ? "grid-cols-2 md:grid-cols-3 lg:grid-cols-4" : "grid-cols-1")}
+              >
+                {filteredFiles.map((file) => (
+                  <Card key={file.id} className="overflow-hidden">
+                    <div className="h-32 bg-secondary flex items-center justify-center">
+                      {file.fileCategory === "images" && file.storageUrl ? (
+                        <img
+                          src={file.storageUrl}
+                          alt={file.fileName}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        fileTypeIcons[file.fileCategory]
+                      )}
+                    </div>
+                    <div className="p-3">
+                      <p className="font-semibold text-sm truncate">{file.fileName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatFileSize(file.fileSize)} &middot; {new Date(file.createdAt).toLocaleDateString()}
+                      </p>
+                      <div className="flex gap-2 mt-2">
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="flex-1"
+                          onClick={() => window.open(file.storageUrl, '_blank')}
+                        >
+                          <Download className="w-3 h-3 mr-1" />
+                          Download
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="destructive"
+                          onClick={() => handleDelete(file.id)}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </main>
     </div>
   )

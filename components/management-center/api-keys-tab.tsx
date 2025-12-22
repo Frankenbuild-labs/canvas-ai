@@ -6,25 +6,25 @@ import { KeyRound, Palette, Share2, Building2, TrendingUp, Bot } from "lucide-re
 const socialModels = [
   { value: "gpt-4-social", label: "OpenAI GPT-4 Social" },
   { value: "claude-3-opus", label: "Anthropic Claude 3 Opus" },
-  { value: "gemini-1.5-pro", label: "Google Gemini 1.5 Pro" },
+  { value: "models/gemini-2.5-flash", label: "Google Gemini 2.5 Flash" },
 ]
 
 const businessModels = [
   { value: "gpt-4-business", label: "OpenAI GPT-4 Business" },
   { value: "claude-3-sonnet", label: "Anthropic Claude 3 Sonnet" },
-  { value: "gemini-pro", label: "Google Gemini Pro" },
+  { value: "models/gemini-2.5-pro", label: "Google Gemini 2.5 Pro" },
 ]
 
 const marketingModels = [
   { value: "gpt-4-marketing", label: "OpenAI GPT-4 Marketing" },
   { value: "claude-3-haiku", label: "Anthropic Claude 3 Haiku" },
-  { value: "gemini-flash", label: "Google Gemini Flash" },
+  { value: "models/gemini-2.5-flash", label: "Google Gemini 2.5 Flash" },
 ]
 
 const metatronModels = [
   { value: "gpt-4-turbo", label: "OpenAI GPT-4 Turbo" },
   { value: "claude-3-opus", label: "Anthropic Claude 3 Opus" },
-  { value: "gemini-1.5-pro", label: "Google Gemini 1.5 Pro" },
+  { value: "models/gemini-2.5-pro", label: "Google Gemini 2.5 Pro" },
 ]
 
 export default function ApiKeysTab() {

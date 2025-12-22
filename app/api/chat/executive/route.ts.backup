@@ -1,0 +1,1206 @@
+import { type NextRequest, NextResponse } from "next/server"
+import { GoogleGenerativeAI } from "@google/generative-ai"
+import path from "path"
+import { promises as fs } from "fs"
+import { Document as DocxDocument, Packer, Paragraph, HeadingLevel, TextRun } from "docx"
+import ExcelJS from "exceljs"
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib"
+import { addToRegistry } from "@/lib/documents/registry"
+
+// Strict init: require GOOGLE_API_KEY; if missing, we'll return a clear error from the handler
+function getGenAI(): GoogleGenerativeAI {
+  const key = process.env.GOOGLE_API_KEY
+  if (!key) {
+    throw new Error("GOOGLE_API_KEY is not set. Add it to .env.local and restart the server.")
+  }
+  return new GoogleGenerativeAI(key)
+}
+const composioApiKey = process.env.COMPOSIO_API_KEY
+
+const DOCUMENT_KEYWORDS = ["create", "build", "generate", "make"]
+const DOCUMENT_TYPES = ["presentation", "report", "spreadsheet", "pdf", "document", "chart", "slides"]
+
+const DOCUMENT_QUESTIONS = {
+  presentation: [
+    "How many slides do you need? (default: 8-12)",
+    "What's your preferred style? (Professional/Creative/Minimal)",
+    "Who's your target audience? (Executive/General/Technical)",
+  ],
+  report: [
+    "What's the report length? (Summary/Detailed/Comprehensive)",
+    "Do you need charts/graphs? (Yes/No/Specific types)",
+    "What's the primary focus? (Data analysis/Recommendations/Overview)",
+  ],
+  spreadsheet: [
+    "What type of analysis? (Financial/Data tracking/Calculations)",
+    "Do you need charts? (Yes/No/Dashboard style)",
+    "How much historical data? (Current/6 months/1 year+)",
+  ],
+}
+
+function detectDocumentRequest(message: string): string | null {
+  const lowerMessage = message.toLowerCase()
+  const hasDocKeyword = DOCUMENT_KEYWORDS.some((keyword) => lowerMessage.includes(keyword))
+
+  if (hasDocKeyword) {
+    for (const docType of DOCUMENT_TYPES) {
+      if (lowerMessage.includes(docType)) {
+        return docType === "slides" ? "presentation" : docType
+      }
+    }
+  }
+  return null
+}
+
+async function createDocument(
+  documentType: string,
+  content: any,
+): Promise<{ success: boolean; filename?: string; url?: string; tab?: "docs" | "sheets" | "pdf"; error?: string }> {
+  try {
+    const outDir = path.join(process.cwd(), "public", "generated")
+    await fs.mkdir(outDir, { recursive: true })
+
+    const baseTitle = (content?.title || `Professional ${documentType}`).toString()
+    const slug = baseTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || documentType
+
+    let kind: "docx" | "xlsx" | "pdf" = "docx"
+    let tab: "docs" | "sheets" | "pdf" = "docs"
+    if (documentType === "spreadsheet") { kind = "xlsx"; tab = "sheets" }
+    else if (documentType === "pdf") { kind = "pdf"; tab = "pdf" }
+    // presentation/report/default -> docx
+
+    const filename = `${slug}.${kind}`
+    const filePath = path.join(outDir, filename)
+
+    if (kind === "docx") {
+      const doc = new DocxDocument({
+        sections: [
+          {
+            properties: {},
+            children: [
+              new Paragraph({ text: baseTitle, heading: HeadingLevel.HEADING_1 }),
+              ...(content?.sections?.flatMap((s: any) => [
+                new Paragraph({ text: s.heading || "Section", heading: HeadingLevel.HEADING_2 }),
+                ...(Array.isArray(s.paragraphs) ? s.paragraphs.map((p: string) => new Paragraph({ text: p })) : []),
+              ]) || []),
+              ...(content?.slides?.flatMap((sl: any, i: number) => [
+                new Paragraph({ text: `Slide ${i + 1}: ${sl.title || "Untitled"}`, heading: HeadingLevel.HEADING_2 }),
+                ...(Array.isArray(sl.bullets) ? sl.bullets.map((b: string) => new Paragraph({ children: [new TextRun({ text: `• ${b}` })] })) : []),
+              ]) || []),
+            ],
+          },
+        ],
+      })
+      const buf = await Packer.toBuffer(doc)
+      await fs.writeFile(filePath, Buffer.from(buf))
+    } else if (kind === "xlsx") {
+      const wb = new ExcelJS.Workbook()
+      const ws = wb.addWorksheet("Sheet1")
+      ws.getCell("A1").value = baseTitle
+      ws.getCell("A1").font = { bold: true, size: 14 }
+      const headers = content?.headers || ["Item", "Q1", "Q2", "Q3", "Q4", "Total"]
+      ws.addRow([])
+      ws.addRow(headers)
+      const data = content?.data || []
+      for (const row of data) ws.addRow(row)
+      ws.columns = new Array(headers.length).fill(null).map((_, i) => ({ width: i === 0 ? 18 : 12 }))
+      const ab = (await wb.xlsx.writeBuffer()) as ArrayBuffer
+      await fs.writeFile(filePath, Buffer.from(ab))
+    } else if (kind === "pdf") {
+      const pdfDoc = await PDFDocument.create()
+      const page = pdfDoc.addPage([595.28, 841.89])
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
+      page.drawText(baseTitle, { x: 50, y: 780, size: 20, font, color: rgb(0.2, 0.2, 0.8) })
+      let y = 740
+      const drawLine = (t: string, size = 12) => { page.drawText(t, { x: 50, y, size, font, color: rgb(0,0,0) }); y -= size + 8 }
+      if (Array.isArray(content?.sections)) {
+        for (const s of content.sections) {
+          drawLine(s.heading || "Section", 14)
+          if (Array.isArray(s.paragraphs)) {
+            for (const p of s.paragraphs) drawLine(p)
+          }
+          y -= 6
+        }
+      }
+      const pdfBytes = await pdfDoc.save()
+      await fs.writeFile(filePath, Buffer.from(pdfBytes))
+    }
+
+  const url = `/generated/${encodeURIComponent(filename)}`
+  // side-effect: record in registry
+  const kindLabel = kind as any
+  await addToRegistry({ id: filename, url, kind: kindLabel, title: baseTitle, createdAt: new Date().toISOString() })
+    return { success: true, filename, url, tab }
+  } catch (error: any) {
+    return { success: false, error: error?.message || String(error) }
+  }
+}
+
+function generateDocumentContent(documentType: string, userMessage: string, history: any[]) {
+  const baseContent = {
+    type: documentType,
+    title: `Professional ${documentType.charAt(0).toUpperCase() + documentType.slice(1)}`,
+    subtitle: `Generated on ${new Date().toLocaleDateString()}`,
+    timestamp: new Date().toISOString(),
+  }
+
+  switch (documentType) {
+    case "presentation":
+      return {
+        ...baseContent,
+        slides: [
+          {
+            title: "Executive Summary",
+            bullets: [
+              "Key objectives and goals",
+              "Strategic initiatives overview",
+              "Expected outcomes and metrics",
+              "Timeline and milestones",
+            ],
+          },
+          {
+            title: "Market Analysis",
+            bullets: [
+              "Current market conditions",
+              "Competitive landscape",
+              "Opportunities and challenges",
+              "Strategic positioning",
+            ],
+          },
+          {
+            title: "Implementation Plan",
+            bullets: [
+              "Phase 1: Foundation and setup",
+              "Phase 2: Core implementation",
+              "Phase 3: Optimization and scaling",
+              "Success metrics and KPIs",
+            ],
+          },
+          {
+            title: "Next Steps",
+            bullets: [
+              "Immediate action items",
+              "Resource requirements",
+              "Timeline and deadlines",
+              "Follow-up and review process",
+            ],
+          },
+        ],
+      }
+
+    case "report":
+      return {
+        ...baseContent,
+        sections: [
+          {
+            heading: "Executive Summary",
+            paragraphs: [
+              "This report provides a comprehensive analysis of current business operations and strategic recommendations for future growth.",
+              "Key findings indicate significant opportunities for improvement in operational efficiency and market expansion.",
+            ],
+          },
+          {
+            heading: "Analysis and Findings",
+            paragraphs: [
+              "Our analysis reveals several critical areas requiring immediate attention and strategic intervention.",
+              "Data-driven insights support the need for systematic improvements across multiple business functions.",
+            ],
+          },
+          {
+            heading: "Recommendations",
+            paragraphs: [
+              "Based on our comprehensive analysis, we recommend implementing a phased approach to address identified challenges.",
+              "Priority should be given to initiatives with the highest potential impact and return on investment.",
+            ],
+          },
+          {
+            heading: "Conclusion",
+            paragraphs: [
+              "The proposed recommendations provide a clear roadmap for achieving strategic objectives and sustainable growth.",
+              "Regular monitoring and evaluation will ensure successful implementation and continuous improvement.",
+            ],
+          },
+        ],
+        table_data: [
+          ["Metric", "Current", "Target", "Timeline"],
+          ["Revenue Growth", "5%", "15%", "Q4 2024"],
+          ["Market Share", "12%", "18%", "Q2 2025"],
+          ["Customer Satisfaction", "85%", "95%", "Q1 2025"],
+        ],
+      }
+
+    case "spreadsheet":
+      return {
+        ...baseContent,
+        headers: ["Category", "Q1", "Q2", "Q3", "Q4", "Total"],
+        data: [
+          ["Revenue", 250000, 275000, 300000, 325000, 1150000],
+          ["Expenses", 180000, 190000, 200000, 210000, 780000],
+          ["Profit", 70000, 85000, 100000, 115000, 370000],
+          ["Growth %", "8%", "12%", "15%", "18%", "13.25%"],
+        ],
+        chart_type: "bar",
+        chart_title: "Quarterly Performance Analysis",
+      }
+
+    default:
+      return {
+        ...baseContent,
+        sections: [
+          {
+            heading: "Overview",
+            paragraphs: [
+              "This document has been generated to address your specific requirements and provide professional-grade content.",
+              "All sections have been structured to meet executive-level standards and business communication best practices.",
+            ],
+          },
+        ],
+      }
+  }
+}
+
+// LLM-based natural language planning
+type ExecPlan = {
+  target: "document" | "spreadsheet" | "presentation" | "pdf"
+  action: "create" | "update" | "format" | "summarize" | "analyze"
+  title?: string
+  noContent?: boolean
+  theme?: string
+  outputFormat?: "pdf" | "pptx" | "docx" | "xlsx"
+  content?: {
+    summary?: string
+    outline?: Array<{ heading: string; bullets?: string[]; paragraphs?: string[] }>
+    slides?: Array<{ title: string; bullets?: string[] }>
+    markdownSlides?: string
+    html?: string
+    spreadsheet?: {
+      template?: string
+      columns?: string[]
+      categories?: Array<{ name: string; color?: string }>
+      rows?: any[][]
+    }
+  }
+}
+
+async function parseIntentLLM(message: string, history: any[]): Promise<ExecPlan | null> {
+  try {
+    const ga = getGenAI()
+    const model = ga.getGenerativeModel({ model: "gemini-2.5-pro" })
+    const sys = `You are a Document Planning Orchestrator. Convert the user's request into a STRICT JSON plan for creating or editing business documents.
+Requirements:
+- ALWAYS return ONLY JSON. No markdown, no commentary.
+- The JSON must match this TypeScript type:
+{
+  target: "document" | "spreadsheet" | "presentation" | "pdf",
+  action: "create" | "update" | "format" | "summarize" | "analyze",
+  title?: string,
+  noContent?: boolean,
+  theme?: string,
+  outputFormat?: "pdf" | "pptx" | "docx" | "xlsx",
+  content?: {
+    summary?: string,
+    outline?: Array<{ heading: string; bullets?: string[]; paragraphs?: string[] }>,
+    slides?: Array<{ title: string; bullets?: string[] }>,
+    markdownSlides?: string,
+    html?: string,
+    spreadsheet?: {
+      template?: string,
+      columns?: string[],
+      categories?: Array<{ name: string; color?: string }>,
+      rows?: any[][]
+    }
+  }
+}
+
+Interpret natural language flexibly:
+- "create a presentation on <topic>" => target:"presentation", action:"create", slides[] covering the topic. If user hints a style/theme (minimal, serif, dark, geometric, neon, pastel, professional), set theme.
+- "set up a spreadsheet for task management, categories colored squares" => target:"spreadsheet", action:"create", content.spreadsheet.template:"task-management" with sensible columns and categories with colors.
+- Requests like "no compete" / "non compete" / "noncompete" refer to a Non-Compete Contract (document). Create a docx with an outline including: Parties, Effective Date, Scope of Restriction, Geographic Scope, Duration/Term, Consideration, Confidentiality, Exceptions, Remedies, Governing Law, Severability, Signatures.
+- If user doesn't specify format, choose sensible defaults: docx for documents, xlsx for spreadsheets, PDF slides for presentations.
+- If user provides specific instructions for sections or bullets, include in outline/slides.`
+    const input = `User: ${message}`
+    const res = await model.generateContent({ contents: [{ role: "user", parts: [{ text: sys + "\n\n" + input }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 1024 } })
+    const text = res.response.text().trim()
+    try {
+      const plan = JSON.parse(text)
+      return plan
+    } catch {
+      const m = text.match(/\{[\s\S]*\}$/)
+      if (m) {
+        const plan = JSON.parse(m[0])
+        return plan
+      }
+    }
+    return null
+  } catch (e) {
+    return null
+  }
+}
+
+async function executePlan(plan: ExecPlan, baseUrl: string) {
+  const nowTs = new Date().toISOString().replace(/[:.]/g, "-")
+  const callJson = async (url: string, init?: RequestInit) => {
+    const res = await fetch(url, init)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return res.json()
+  }
+
+  if (plan.target === "presentation" && plan.action === "create") {
+    let markdown = plan.content?.markdownSlides
+    if (!markdown && Array.isArray(plan.content?.slides)) {
+      markdown = plan.content!.slides
+        .map((s) => {
+          const bullets = (s.bullets || []).map((b) => `- ${b}`).join("\n")
+          return `# ${s.title || "Slide"}\n\n${bullets}`
+        })
+        .join("\n\n---\n\n")
+    }
+    const title = plan.title || plan.content?.summary || "slides"
+    const theme = plan.theme
+    const data = await callJson(`${baseUrl}/api/render/slides-pdf`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, markdown, theme }),
+    })
+    return { message: `Created a presentation${theme ? ` with theme ${theme}` : ""}.`, documentCreation: { type: "pdf", stage: "created", url: data?.url, tab: "pdf" } }
+  }
+
+  if (plan.target === "document" && plan.action === "create") {
+    const outDir = path.join(process.cwd(), "public", "generated")
+    await fs.mkdir(outDir, { recursive: true })
+    const title = plan.title || "Document"
+    const filename = `${title.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "document"}-${nowTs}.docx`
+    const filePath = path.join(outDir, filename)
+    const children: any[] = []
+    children.push(new Paragraph({ text: title, heading: HeadingLevel.HEADING_1 }))
+    if (!plan.noContent && Array.isArray(plan.content?.outline) && plan.content!.outline.length) {
+      for (const s of plan.content!.outline) {
+        children.push(new Paragraph({ text: s.heading || "Section", heading: HeadingLevel.HEADING_2 }))
+        if (Array.isArray(s.paragraphs)) for (const p of s.paragraphs) children.push(new Paragraph({ text: p }))
+        if (Array.isArray(s.bullets)) for (const b of s.bullets) children.push(new Paragraph({ children: [new TextRun({ text: `• ${b}` })] }))
+      }
+    }
+    const doc = new DocxDocument({ sections: [{ properties: {}, children }] })
+    const buf = await Packer.toBuffer(doc)
+    await fs.writeFile(filePath, Buffer.from(buf))
+    const url = `/generated/${encodeURIComponent(filename)}`
+    await addToRegistry({ id: filename, url, kind: "docx" as any, title, createdAt: new Date().toISOString() })
+    return { message: plan.noContent ? `Created a blank document.` : `Created a document.`, documentCreation: { type: "document", stage: "created", url, tab: "docs" } }
+  }
+
+  if (plan.target === "spreadsheet" && plan.action === "create") {
+    const wb = new ExcelJS.Workbook()
+    const ws = wb.addWorksheet("Tasks")
+    const title = plan.title || "Task Management"
+    ws.getCell("A1").value = title
+    ws.getCell("A1").font = { bold: true, size: 16 }
+    ws.mergeCells("A1:F1")
+    const cols = plan.content?.spreadsheet?.columns || ["Task", "Owner", "Status", "Priority", "Due", "Category", "Notes"]
+    ws.addRow([])
+    ws.addRow(cols)
+    ws.getRow(3).font = { bold: true }
+    ws.getRow(3).alignment = { vertical: "middle" }
+    ws.getRow(3).height = 20
+    ws.columns = cols.map((c) => ({ width: Math.max(10, Math.min(28, c.length + 4)) })) as any
+
+    const rows = plan.content?.spreadsheet?.rows || []
+    for (const r of rows) ws.addRow(r)
+
+    const categories = plan.content?.spreadsheet?.categories || [
+      { name: "Backlog", color: "#94a3b8" },
+      { name: "To Do", color: "#f59e0b" },
+      { name: "In Progress", color: "#0ea5e9" },
+      { name: "Blocked", color: "#ef4444" },
+      { name: "Done", color: "#10b981" },
+    ]
+    const catIdx = cols.findIndex((c) => c.toLowerCase().includes("category"))
+    if (catIdx >= 0) {
+      const colorColIdx = cols.length + 1
+      ws.getCell(3, colorColIdx).value = "Category Color"
+      ws.getCell(3, colorColIdx).font = { bold: true }
+      const legend = wb.addWorksheet("Legend")
+      legend.columns = [{ header: "Category", width: 18 }, { header: "Color", width: 14 }]
+      for (const cat of categories) {
+        const row = legend.addRow([cat.name, ""])!
+        const fill = { type: "pattern", pattern: "solid", fgColor: { argb: (cat.color || "#94a3b8").replace("#", "FF") } }
+        row.getCell(2).fill = fill as any
+      }
+      legend.getRow(1).font = { bold: true }
+      for (let r = 4; r < 14; r++) {
+        const cat = ws.getCell(r, catIdx + 1).value as string | undefined
+        const found = categories.find((c) => c.name.toLowerCase() === (cat || "").toLowerCase())
+        const color = found?.color || "#e2e8f0"
+        ws.getCell(r, colorColIdx).fill = { type: "pattern", pattern: "solid", fgColor: { argb: color.replace("#", "FF") } } as any
+      }
+    }
+
+    const ab = (await wb.xlsx.writeBuffer()) as ArrayBuffer
+    const outDir = path.join(process.cwd(), "public", "generated")
+    await fs.mkdir(outDir, { recursive: true })
+    const filename = `${title.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "task-management"}-${nowTs}.xlsx`
+    const filePath = path.join(outDir, filename)
+    await fs.writeFile(filePath, Buffer.from(ab))
+    const url = `/generated/${encodeURIComponent(filename)}`
+    await addToRegistry({ id: filename, url, kind: "xlsx" as any, title, createdAt: new Date().toISOString() })
+    return { message: `Created a task management spreadsheet with category colors and legend.`, documentCreation: { type: "spreadsheet", stage: "created", url, tab: "sheets" } }
+  }
+
+  return null
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const { message, history } = await request.json()
+    const lower = (message || "").toLowerCase()
+    // Prefer current request origin to avoid hardcoded ports/env
+    const baseUrl = request.nextUrl.origin
+    const callJson = async (url: string, init?: RequestInit) => {
+      const res = await fetch(url, init)
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "")
+        throw new Error(`HTTP ${res.status} ${txt}`)
+      }
+      return res.json()
+    }
+
+    // Prefer plan-first: normalize common phrase for non-compete
+    const normalized = (message || "").replace(/\bno\s*comp(?:e?te|e?tent?)\b/ig, "non compete")
+    // Require LLM planning; do not proceed without a valid key
+    if (!process.env.GOOGLE_API_KEY) {
+      return NextResponse.json({ error: "GOOGLE_API_KEY is not configured. Set GOOGLE_API_KEY in .env.local and restart the dev server." }, { status: 500 })
+    }
+    const plan = await parseIntentLLM(normalized, history)
+    if (plan) {
+      const outcome = await executePlan(plan, baseUrl).catch(() => null)
+      if (outcome) return NextResponse.json(outcome)
+    }
+    // Try once more with raw message in case normalization affected parsing
+    const plan2 = await parseIntentLLM(message, history)
+    if (plan2) {
+      const outcome = await executePlan(plan2, baseUrl).catch(() => null)
+      if (outcome) return NextResponse.json(outcome)
+    }
+
+
+    // Quick NL intent handlers for DOCX MVP
+    // 1) Open latest document
+    if (/\bopen\b.*\b(last|latest|recent)\b.*\b(doc|document|file)\b/.test(lower)) {
+      try {
+        const data = await callJson(`${baseUrl}/api/documents/open?kind=docx`)
+        const url = data?.url
+        if (url) {
+          return NextResponse.json({
+            message: `Opened the most recent document.`,
+            documentCreation: { type: "document", stage: "created", url, tab: "docs" },
+          })
+        }
+        return NextResponse.json({ message: `I couldn't find a recent document to open. Would you like me to create one?` })
+      } catch (e: any) {
+        return NextResponse.json({ message: `I couldn't open the last document (${e?.message}).` })
+      }
+    }
+
+    // 2) Word count
+    if (/\bcount\b.*\bword/.test(lower)) {
+      try {
+        const data = await callJson(`${baseUrl}/api/documents/docx/wordcount`)
+        const count = data?.count ?? 0
+        return NextResponse.json({ message: `The document has approximately ${count} words.` })
+      } catch (e: any) {
+        return NextResponse.json({ message: `I couldn't count the words (${e?.message}). Do you want me to open the latest document first?` })
+      }
+    }
+
+    // 3) Replace Nth paragraph with text (supports "remove the second paragraph and replace with xyz")
+    if ((/\breplace\b.*\bparagraph\b/.test(lower) || /\bremove\b.*\bparagraph\b.*\breplace\b/.test(lower))) {
+      // Extract index (first/second/third or number)
+      const ordMap: Record<string, number> = { first: 1, second: 2, third: 3, fourth: 4, fifth: 5 }
+      let idx = 2
+      const ord = lower.match(/\b(first|second|third|fourth|fifth|\d+)\b/)?.[1]
+      if (ord) idx = ordMap[ord] || parseInt(ord, 10) || 2
+      const replMatch = message.match(/replace(?:\s+it)?\s+(?:with\s+|by\s+)([\s\S]+)$/i)
+      const text = replMatch?.[1]?.trim()
+      if (!text) {
+        return NextResponse.json({ message: `Which text should I use to replace paragraph ${idx}?` })
+      }
+      try {
+        const data = await callJson(`${baseUrl}/api/documents/docx/replace-paragraph`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ index: idx, text }),
+        })
+        const url = data?.url
+        if (url) {
+          return NextResponse.json({
+            message: `Replaced paragraph ${idx}. I've loaded the updated document.`,
+            documentCreation: { type: "document", stage: "created", url, tab: "docs" },
+          })
+        }
+        return NextResponse.json({ message: `I attempted to replace paragraph ${idx}, but I couldn't produce an updated document.` })
+      } catch (e: any) {
+        return NextResponse.json({ message: `I couldn't replace paragraph ${idx} (${e?.message}).` })
+      }
+    }
+
+    // 4) Find and replace across whole document
+    if (/\bfind\b[\s\S]*\breplace\b/.test(lower)) {
+      // Try to capture: find X and replace with Y
+      const m = message.match(/find\s+['"]?([^'"\n]+)['"]?\s+(?:and\s+)?replace\s+(?:it\s+)?with\s+['"]?([^'"\n]+)['"]?/i)
+      if (!m) {
+        return NextResponse.json({ message: `What text should I find, and what should I replace it with?` })
+      }
+      const find = m[1].trim()
+      const replaceWith = m[2].trim()
+      try {
+        const data = await callJson(`${baseUrl}/api/documents/docx/find-replace`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ find, replaceWith }),
+        })
+        const url = data?.url
+        return NextResponse.json({
+          message: `Replaced all occurrences of "${find}" with "${replaceWith}" and loaded the updated document.`,
+          documentCreation: { type: "document", stage: "created", url, tab: "docs" },
+        })
+      } catch (e: any) {
+        return NextResponse.json({ message: `I couldn't complete the find-and-replace (${e?.message}).` })
+      }
+    }
+
+    // 5) Add a company header text (logo gen later)
+    if (/\b(add|create)\b[\s\S]*\b(company\s+)?header(\s+logo)?\b/.test(lower)) {
+      // Try to pick header text from the message
+      const m = message.match(/header(?:\s+logo)?(?:\s+for)?\s+([\w\s\-\.&]+)$/i)
+      const headerText = (m?.[1] || "Company Header").trim()
+      try {
+        const data = await callJson(`${baseUrl}/api/documents/docx/header-text`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: headerText }),
+        })
+        const url = data?.url
+        return NextResponse.json({
+          message: `Added a header "${headerText}" and loaded the updated document. (We can add logos next.)`,
+          documentCreation: { type: "document", stage: "created", url, tab: "docs" },
+        })
+      } catch (e: any) {
+        return NextResponse.json({ message: `I couldn't add the header (${e?.message}).` })
+      }
+    }
+
+    // 6) Grade this paper/document
+    if (/(\bgrade\b|\bscore\b)[\s\S]*(\bpaper\b|\bdocument\b|\bessay\b)/.test(lower)) {
+      try {
+        const rubricMatch = message.match(/rubric:\s*([\s\S]+)/i)
+        const rubric = rubricMatch ? JSON.parse(rubricMatch[1]) : undefined
+        const data = await callJson(`${baseUrl}/api/documents/docx/grade`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rubric }),
+        })
+        const score = data?.score
+        const url = data?.url
+        if (score != null && url) {
+          return NextResponse.json({
+            message: `I've graded the document. Overall score: ${score}/100. I've also created a feedback report and loaded it.`,
+            documentCreation: { type: "document", stage: "created", url, tab: "docs" },
+          })
+        }
+        return NextResponse.json({ message: `I attempted to grade the document but couldn't produce a feedback report.` })
+      } catch (e: any) {
+        return NextResponse.json({ message: `I couldn't grade the document (${e?.message}).` })
+      }
+    }
+
+    // 7) Insert/Add header logo
+    if (/(insert|add)\s+(a\s+)?(header\s+)?logo/.test(lower)) {
+      try {
+        const mLogo = message.match(/logo\s+(?:from|at|url)\s+([^\s]+)|logo\s+"([^"]+)"|logo\s+'([^']+)'/i)
+        const logoUrl = (mLogo?.[1] || mLogo?.[2] || mLogo?.[3] || "/placeholder-logo.png").trim()
+        const mText = message.match(/(?:with|and)\s+(?:title|text|header)\s+"([^"]+)"|(?:with|and)\s+(?:title|text|header)\s+'([^']+)'/i)
+        const text = (mText?.[1] || mText?.[2] || "").trim()
+        const data = await callJson(`${baseUrl}/api/documents/docx/header-logo`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ logoUrl, text }),
+        })
+        const url = data?.url
+        if (url) {
+          return NextResponse.json({
+            message: `I've inserted the header logo${text ? ` and the text "${text}"` : ""}. I've loaded the updated document.`,
+            documentCreation: { type: "document", stage: "created", url, tab: "docs" },
+          })
+        }
+        return NextResponse.json({ message: `I attempted to add a header logo, but couldn't produce an updated document.` })
+      } catch (e: any) {
+        return NextResponse.json({ message: `I couldn't add a header logo (${e?.message}).` })
+      }
+    }
+
+    // XLSX intents
+    // A) Open latest spreadsheet
+    if (/\bopen\b.*\b(last|latest|recent)\b.*\b(sheet|spreadsheet|excel|xlsx)\b/.test(lower)) {
+      try {
+        const data = await callJson(`${baseUrl}/api/documents/open?kind=xlsx`)
+        const url = data?.url
+        if (url) {
+          return NextResponse.json({
+            message: `Opened the most recent spreadsheet.`,
+            documentCreation: { type: "spreadsheet", stage: "created", url, tab: "sheets" },
+          })
+        }
+        return NextResponse.json({ message: `I couldn't find a recent spreadsheet to open. Should I create one?` })
+      } catch (e: any) {
+        return NextResponse.json({ message: `I couldn't open the last spreadsheet (${e?.message}).` })
+      }
+    }
+
+    // G) Add hyperlink to a cell
+    if (/(add|insert)\s+(a\s+)?(hyperlink|link)\b/.test(lower)) {
+      try {
+        const sheet = message.match(/in\s+(sheet|tab)\s+([\w\- ]+)/i)?.[2]?.trim() || "Sheet1"
+        const address = (message.match(/([A-Za-z]{1,3}\d{1,5})/)?.[1] || "A1").toUpperCase()
+        const urlM = message.match(/https?:[^\s"']+/i)
+        const url = urlM ? urlM[0] : "https://example.com"
+        const text = message.match(/text\s+"([^"]+)"|text\s+'([^']+)'/i)
+          ? (RegExp.$1 || RegExp.$2)
+          : url
+        const data = await callJson(`${baseUrl}/api/documents/xlsx/hyperlink`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sheet, address, url, text }),
+        })
+        return NextResponse.json({
+          message: `Added a hyperlink to ${address} on ${sheet} and loaded the spreadsheet.`,
+          documentCreation: { type: "spreadsheet", stage: "created", url: data?.url, tab: "sheets" },
+        })
+      } catch (e: any) {
+        return NextResponse.json({ message: `I couldn't add the hyperlink (${e?.message}).` })
+      }
+    }
+
+    // H) Format range (colors, fonts, alignment, borders)
+    if (/(color|fill|background|font|bold|italic|underline|center|align|border)/.test(lower)) {
+      try {
+        const sheet = message.match(/in\s+(sheet|tab)\s+([\w\- ]+)/i)?.[2]?.trim() || "Sheet1"
+        const mRange = message.match(/range\s+([A-Za-z]{1,3}\d{1,5}:[A-Za-z]{1,3}\d{1,5})/i)
+        const range = mRange?.[1] || "A1:A1"
+        const bold = /\bbold\b/.test(lower)
+        const italic = /\bitalic\b/.test(lower)
+        const underline = /\bunderline\b/.test(lower)
+        const sizeM = message.match(/font\s*size\s*(\d{1,2})/i)
+        const size = sizeM ? parseInt(sizeM[1], 10) : undefined
+        const hexM = message.match(/#([0-9A-Fa-f]{6,8})/)
+        const fg = hexM ? hexM[1].toUpperCase() : undefined
+        const font: any = {}
+        if (bold) font.bold = true
+        if (italic) font.italic = true
+        if (underline) font.underline = true
+        if (size) font.size = size
+        const fill = fg ? { type: 'pattern', pattern: 'solid', fgColor: { argb: fg.length === 6 ? 'FF'+fg : fg } } : undefined
+        const center = /\b(center|centre|centered)\b/.test(lower)
+        const alignment = center ? { horizontal: 'center', vertical: 'middle' } : undefined
+        const border = /\bborder\b/.test(lower) ? { top: {style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'} } : undefined
+        const payload: any = { sheet, range }
+        if (Object.keys(font).length) payload.font = font
+        if (fill) payload.fill = fill
+        if (alignment) payload.alignment = alignment
+        if (border) payload.border = border
+        const data = await callJson(`${baseUrl}/api/documents/xlsx/format-range`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+        return NextResponse.json({
+          message: `Formatted ${range} on ${sheet} and loaded the spreadsheet.`,
+          documentCreation: { type: "spreadsheet", stage: "created", url: data?.url, tab: "sheets" },
+        })
+      } catch (e: any) {
+        return NextResponse.json({ message: `I couldn't apply the formatting (${e?.message}).` })
+      }
+    }
+
+    // I) Toggle gridlines
+    if (/gridline/.test(lower)) {
+      try {
+        const sheet = message.match(/in\s+(sheet|tab)\s+([\w\- ]+)/i)?.[2]?.trim() || "Sheet1"
+        const show = /show|on/.test(lower) && !/hide|off/.test(lower)
+        const data = await callJson(`${baseUrl}/api/documents/xlsx/gridlines`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sheet, show }),
+        })
+        return NextResponse.json({
+          message: `${show ? 'Enabled' : 'Disabled'} gridlines on ${sheet} and loaded the spreadsheet.`,
+          documentCreation: { type: "spreadsheet", stage: "created", url: data?.url, tab: "sheets" },
+        })
+      } catch (e: any) {
+        return NextResponse.json({ message: `I couldn't toggle gridlines (${e?.message}).` })
+      }
+    }
+
+    // J) Add table
+    if (/(add|create)\s+(a\s+)?table\b/.test(lower)) {
+      try {
+        const sheet = message.match(/in\s+(sheet|tab)\s+([\w\- ]+)/i)?.[2]?.trim() || "Sheet1"
+        const range = message.match(/range\s+([A-Za-z]{1,3}\d{1,5}:[A-Za-z]{1,3}\d{1,5})/i)?.[1] || "A1:B2"
+        const name = message.match(/named\s+"([^"]+)"|named\s+'([^']+)'/i)?.[1] || `Table_${Date.now()}`
+        const data = await callJson(`${baseUrl}/api/documents/xlsx/add-table`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sheet, range, name }),
+        })
+        return NextResponse.json({
+          message: `Added a table ${name} over ${range} on ${sheet} and loaded the spreadsheet.`,
+          documentCreation: { type: "spreadsheet", stage: "created", url: data?.url, tab: "sheets" },
+        })
+      } catch (e: any) {
+        return NextResponse.json({ message: `I couldn't add the table (${e?.message}).` })
+      }
+    }
+
+    // K) Set formula
+    if (/\bformula\b/.test(lower)) {
+      try {
+        const sheet = message.match(/in\s+(sheet|tab)\s+([\w\- ]+)/i)?.[2]?.trim() || "Sheet1"
+        const address = (message.match(/([A-Za-z]{1,3}\d{1,5})/)?.[1] || "B2").toUpperCase()
+        const fMatch = message.match(/formula\s*[:=]?\s*"([^"]+)"|formula\s*[:=]?\s*'([^']+)'/i)
+        if (!fMatch) return NextResponse.json({ message: `What formula should I set for ${address}? Provide it in quotes.` })
+        const formula = (fMatch[1] || fMatch[2]).trim()
+        const data = await callJson(`${baseUrl}/api/documents/xlsx/set-formula`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sheet, address, formula }),
+        })
+        return NextResponse.json({
+          message: `Set a formula in ${address} on ${sheet} and loaded the spreadsheet.`,
+          documentCreation: { type: "spreadsheet", stage: "created", url: data?.url, tab: "sheets" },
+        })
+      } catch (e: any) {
+        return NextResponse.json({ message: `I couldn't set the formula (${e?.message}).` })
+      }
+    }
+
+    // L) Column widths / layout
+    if (/column\s+width/.test(lower)) {
+      try {
+        const sheet = message.match(/in\s+(sheet|tab)\s+([\w\- ]+)/i)?.[2]?.trim() || "Sheet1"
+        const pairs = Array.from(message.matchAll(/([A-Za-z]{1,3})\s*[=:]\s*(\d{1,3})/g))
+        if (!pairs.length) return NextResponse.json({ message: `Provide column widths like A=20, B=15.` })
+        const widths: Record<string, number> = {}
+        for (const m of pairs) widths[m[1].toUpperCase()] = parseInt(m[2], 10)
+        const data = await callJson(`${baseUrl}/api/documents/xlsx/column-widths`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sheet, widths }),
+        })
+        return NextResponse.json({
+          message: `Updated column widths on ${sheet} and loaded the spreadsheet.`,
+          documentCreation: { type: "spreadsheet", stage: "created", url: data?.url, tab: "sheets" },
+        })
+      } catch (e: any) {
+        return NextResponse.json({ message: `I couldn't update column widths (${e?.message}).` })
+      }
+    }
+
+    // M) Freeze panes
+    if (/\bfreeze\b/.test(lower)) {
+      try {
+        const sheet = message.match(/in\s+(sheet|tab)\s+([\w\- ]+)/i)?.[2]?.trim() || "Sheet1"
+        const topRow = /top\s+row|row\s+1/.test(lower)
+        const firstCol = /first\s+column|column\s+a\b/.test(lower)
+        const rows = topRow ? 1 : (message.match(/row\s+(\d+)/i)?.[1] ? parseInt(RegExp.$1, 10) : 1)
+        const columns = firstCol ? 1 : (message.match(/column\s+([A-Za-z]+)/i)?.[1] ? 1 : 0)
+        const data = await callJson(`${baseUrl}/api/documents/xlsx/freeze-pane`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sheet, rows, columns }),
+        })
+        return NextResponse.json({
+          message: `Applied freeze pane (rows=${rows}, columns=${columns}) on ${sheet} and loaded the spreadsheet.`,
+          documentCreation: { type: "spreadsheet", stage: "created", url: data?.url, tab: "sheets" },
+        })
+      } catch (e: any) {
+        return NextResponse.json({ message: `I couldn't freeze panes (${e?.message}).` })
+      }
+    }
+
+    // N) Insert image (object)
+    if (/(insert|add)\s+(an\s+)?(image|picture|logo)\b/.test(lower)) {
+      try {
+        const sheet = message.match(/in\s+(sheet|tab)\s+([\w\- ]+)/i)?.[2]?.trim() || "Sheet1"
+        const imageUrl = message.match(/\s(\/[^\s"']+\.(png|jpg|jpeg|gif|svg))/i)?.[1] || "/placeholder-logo.png"
+        const data = await callJson(`${baseUrl}/api/documents/xlsx/add-image`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sheet, imageUrl }),
+        })
+        return NextResponse.json({
+          message: `Inserted an image on ${sheet} and loaded the spreadsheet.`,
+          documentCreation: { type: "spreadsheet", stage: "created", url: data?.url, tab: "sheets" },
+        })
+      } catch (e: any) {
+        return NextResponse.json({ message: `I couldn't insert the image (${e?.message}).` })
+      }
+    }
+
+    // O) Add chart (data visualization)
+    if (/(add|insert)\s+(a\s+)?(chart|graph)\b/.test(lower)) {
+      try {
+        const sheet = message.match(/in\s+(sheet|tab)\s+([\w\- ]+)/i)?.[2]?.trim() || "Sheet1"
+        const nums = Array.from(message.matchAll(/(-?\d+(?:\.\d+)?)/g)).map((m) => Number(m[1]))
+        const values = nums.length ? nums : [5, 12, 8, 15, 9]
+        const data = await callJson(`${baseUrl}/api/documents/xlsx/add-chart`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sheet, values }),
+        })
+        return NextResponse.json({
+          message: `Added a chart to ${sheet} and loaded the spreadsheet.`,
+          documentCreation: { type: "spreadsheet", stage: "created", url: data?.url, tab: "sheets" },
+        })
+      } catch (e: any) {
+        return NextResponse.json({ message: `I couldn't add a chart (${e?.message}).` })
+      }
+    }
+
+    // B) Set cell value: e.g., "set B3 to 42" / "in Sheet2 set A1 to Total"
+    if (/\bset\b[\s\S]*\b([a-z]\d{1,4})\b\s*(to|=)/i.test(lower) || /\bput\b[\s\S]*\b([a-z]\d{1,4})\b/i.test(lower)) {
+      try {
+        const sheetMatch = message.match(/in\s+(sheet|tab)\s+([\w\- ]+)/i)
+        const sheet = (sheetMatch?.[2] || "Sheet1").trim()
+        const cellMatch = message.match(/([A-Za-z]{1,3}\d{1,5})/)
+        const address = (cellMatch?.[1] || "A1").toUpperCase()
+        const valueMatch = message.match(/(?:to|=)\s+"([^"]+)"|(?:to|=)\s+'([^']+)'|(?:to|=)\s+([^\n]+)/i)
+        const value = (valueMatch?.[1] || valueMatch?.[2] || valueMatch?.[3] || "").trim()
+        const data = await callJson(`${baseUrl}/api/documents/xlsx/set-cell`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sheet, address, value }),
+        })
+        const url = data?.url
+        return NextResponse.json({
+          message: `Set ${address} on ${sheet} and loaded the updated spreadsheet.`,
+          documentCreation: { type: "spreadsheet", stage: "created", url, tab: "sheets" },
+        })
+      } catch (e: any) {
+        return NextResponse.json({ message: `I couldn't set the cell value (${e?.message}).` })
+      }
+    }
+
+    // C) Add a new sheet
+    if (/\b(add|create)\b\s+(a\s+)?(new\s+)?sheet\b/.test(lower)) {
+      try {
+        const nameMatch = message.match(/sheet\s+(?:named\s+)?"([^"]+)"|sheet\s+(?:named\s+)?'([^']+)'|sheet\s+(?:named\s+)?([\w\- ]+)/i)
+        const name = (nameMatch?.[1] || nameMatch?.[2] || nameMatch?.[3] || "Sheet2").trim()
+        const data = await callJson(`${baseUrl}/api/documents/xlsx/add-sheet`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name }),
+        })
+        const url = data?.url
+        return NextResponse.json({
+          message: `Added a new sheet "${name}" and loaded the updated spreadsheet.`,
+          documentCreation: { type: "spreadsheet", stage: "created", url, tab: "sheets" },
+        })
+      } catch (e: any) {
+        return NextResponse.json({ message: `I couldn't add the new sheet (${e?.message}).` })
+      }
+    }
+
+    // D) Append rows
+    if (/\bappend\b[\s\S]*\brow/.test(lower)) {
+      try {
+        const sheetMatch = message.match(/in\s+(sheet|tab)\s+([\w\- ]+)/i)
+        const sheet = (sheetMatch?.[2] || "Sheet1").trim()
+        // For NL extraction, if not present, ask follow-up; for now require the UI/agent to provide rows explicitly
+        return NextResponse.json({ message: `What rows should I append to ${sheet}? Please provide a list of arrays.` })
+      } catch (e: any) {
+        return NextResponse.json({ message: `I couldn't parse the rows to append.` })
+      }
+    }
+
+    // E) Find/replace in sheet
+    if (/\bfind\b[\s\S]*\breplace\b[\s\S]*\b(sheet|tab)\b|\bfind\b[\s\S]*\breplace\b[\s\S]*\b(excel|spreadsheet)\b/i.test(lower)) {
+      try {
+        const sheetMatch = message.match(/in\s+(sheet|tab)\s+([\w\- ]+)/i)
+        const sheet = (sheetMatch?.[2] || "Sheet1").trim()
+        const m = message.match(/find\s+"([^"]+)"\s+(?:and\s+)?replace\s+(?:it\s+)?with\s+"([^"]+)"|find\s+'([^']+)'\s+(?:and\s+)?replace\s+(?:it\s+)?with\s+'([^']+)'/i)
+        if (!m) return NextResponse.json({ message: `What text should I find, and what should I replace it with?` })
+        const find = (m[1] || m[3]).trim()
+        const replaceWith = (m[2] || m[4]).trim()
+        const data = await callJson(`${baseUrl}/api/documents/xlsx/find-replace`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sheet, find, replaceWith }),
+        })
+        const url = data?.url
+        return NextResponse.json({
+          message: `Replaced all occurrences of "${find}" with "${replaceWith}" on ${sheet} and loaded the spreadsheet.`,
+          documentCreation: { type: "spreadsheet", stage: "created", url, tab: "sheets" },
+        })
+      } catch (e: any) {
+        return NextResponse.json({ message: `I couldn't complete the spreadsheet find-and-replace (${e?.message}).` })
+      }
+    }
+
+    // F) Sum a column
+    if (/\bsum\b[\s\S]*\bcolumn\b/.test(lower)) {
+      try {
+        const sheetMatch = message.match(/in\s+(sheet|tab)\s+([\w\- ]+)/i)
+        const sheet = (sheetMatch?.[2] || "Sheet1").trim()
+        const colMatch = message.match(/column\s+([A-Za-z]+)/)
+        const column = (colMatch?.[1] || "B").toUpperCase()
+        const startMatch = message.match(/from\s+row\s+(\d+)/i)
+        const endMatch = message.match(/to\s+row\s+(\d+)/i)
+        const startRow = startMatch ? parseInt(startMatch[1], 10) : 2
+        const endRow = endMatch ? parseInt(endMatch[1], 10) : 100
+        const outCell = `${column}${endRow + 1}`
+        const data = await callJson(`${baseUrl}/api/documents/xlsx/sum-column`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sheet, column, startRow, endRow, outCell }),
+        })
+        const url = data?.url
+        return NextResponse.json({
+          message: `Summed values in ${column}${startRow}:${column}${endRow} on ${sheet} and wrote the result to ${outCell}. Loaded the spreadsheet.`,
+          documentCreation: { type: "spreadsheet", stage: "created", url, tab: "sheets" },
+        })
+      } catch (e: any) {
+        return NextResponse.json({ message: `I couldn't complete the column sum (${e?.message}).` })
+      }
+    }
+
+    // PDF intents
+    // Open latest PDF
+    if (/\bopen\b.*\b(latest|last|recent)\b.*\bpdf\b/.test(lower)) {
+      try {
+        const data = await callJson(`${baseUrl}/api/documents/open?kind=pdf`)
+        const url = data?.url
+        if (url) return NextResponse.json({ message: `Opened the most recent PDF.`, documentCreation: { type: 'pdf', stage: 'created', url, tab: 'pdf' } })
+        return NextResponse.json({ message: `I couldn't find a recent PDF to open.` })
+      } catch (e: any) {
+        return NextResponse.json({ message: `I couldn't open the last PDF (${e?.message}).` })
+      }
+    }
+
+    // Add PDF watermark
+    if (/(add|apply)\s+(a\s+)?watermark\b/.test(lower) && /pdf/.test(lower)) {
+      try {
+        const m = message.match(/watermark\s+"([^"]+)"|watermark\s+'([^']+)'/i)
+        const text = (m?.[1] || m?.[2] || 'CONFIDENTIAL').trim()
+        const data = await callJson(`${baseUrl}/api/documents/pdf/watermark`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text })
+        })
+        return NextResponse.json({ message: `Applied watermark and loaded the PDF.`, documentCreation: { type: 'pdf', stage: 'created', url: data?.url, tab: 'pdf' } })
+      } catch (e: any) {
+        return NextResponse.json({ message: `I couldn't add a watermark (${e?.message}).` })
+      }
+    }
+
+    // Add PDF header/footer
+    if (/(add|apply)\s+(header|footer)/.test(lower) && /pdf/.test(lower)) {
+      try {
+        const header = message.match(/header\s+"([^"]+)"|header\s+'([^']+)'/i)?.[1] || ''
+        const footer = message.match(/footer\s+"([^"]+)"|footer\s+'([^']+)'/i)?.[1] || ''
+        if (!header && !footer) return NextResponse.json({ message: `Provide header or footer text in quotes.` })
+        const data = await callJson(`${baseUrl}/api/documents/pdf/header-footer`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ header, footer })
+        })
+        return NextResponse.json({ message: `Added header/footer and loaded the PDF.`, documentCreation: { type: 'pdf', stage: 'created', url: data?.url, tab: 'pdf' } })
+      } catch (e: any) {
+        return NextResponse.json({ message: `I couldn't add header/footer (${e?.message}).` })
+      }
+    }
+
+    // Merge PDFs
+    if (/\bmerge\b[\s\S]*\bpdf/.test(lower)) {
+      try {
+        const other = message.match(/with\s+(\/[^\s"']+\.pdf)/i)?.[1]
+        if (!other) return NextResponse.json({ message: `Provide a public path to the other PDF, like /templates/pdf/sample.pdf` })
+        const data = await callJson(`${baseUrl}/api/documents/pdf/merge`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ otherUrl: other })
+        })
+        return NextResponse.json({ message: `Merged PDFs and loaded the result.`, documentCreation: { type: 'pdf', stage: 'created', url: data?.url, tab: 'pdf' } })
+      } catch (e: any) {
+        return NextResponse.json({ message: `I couldn't merge PDFs (${e?.message}).` })
+      }
+    }
+
+  // Presentation intents (PPTX)
+  if (/\b(create|build|generate|make)\b[\s\S]*\b(presentation|slides)\b/.test(lower)) {
+      try {
+        // Prefer HTML/Markdown → PDF deck for fast, pretty output; fall back to PPTX generation upon request
+        const mdMatch = message.match(/```(?:md|markdown)\n([\s\S]*?)```/i)
+        if (mdMatch) {
+          const markdown = mdMatch[1]
+          // Try to detect a theme hint from the user's message
+          const themeMap: Record<string, string> = {
+            minimal: 'clean-minimal',
+            clean: 'clean-minimal',
+            serif: 'editorial-serif',
+            editorial: 'editorial-serif',
+            dark: 'dark-gradient',
+            gradient: 'dark-gradient',
+            geometric: 'geometric-grid',
+            grid: 'geometric-grid',
+            neon: 'neo-neon',
+            pastel: 'pastel-professional',
+            professional: 'pastel-professional',
+          }
+          let theme: string | undefined
+          for (const key of Object.keys(themeMap)) {
+            if (lower.includes(key)) { theme = themeMap[key]; break }
+          }
+          const data = await callJson(`${baseUrl}/api/render/slides-pdf`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'slides', markdown, theme })
+          })
+          return NextResponse.json({ message: `Rendered slides to PDF and opened it.`, documentCreation: { type: 'pdf', stage: 'created', url: data?.url, tab: 'pdf' } })
+        }
+        // If PPTX requested explicitly
+        if (/pptx|powerpoint|native\s+slides/.test(lower)) {
+          const slides = [
+            { title: 'Executive Summary', bullets: ['Objectives', 'Initiatives', 'Outcomes'] },
+            { title: 'Plan', bullets: ['Phase 1', 'Phase 2', 'Phase 3'] },
+            { title: 'Next Steps', bullets: ['Action items', 'Resources', 'Timeline'] },
+          ]
+          const deckTitle = message.match(/presentation\s+\"([^\"]+)\"|presentation\s+'([^']+)'/i)?.[1] || 'Presentation'
+          const data = await callJson(`${baseUrl}/api/documents/pptx/generate`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: deckTitle, slides })
+          })
+          return NextResponse.json({ message: `Created a PPTX and loaded it in Slides.`, documentCreation: { type: 'presentation', stage: 'created', url: data?.url, tab: 'slides' } })
+        }
+        // Otherwise offer markdown-driven flow
+        return NextResponse.json({ message: `Provide your slides in Markdown with '---' between slides, and I'll render a clean PDF deck. Or say 'PPTX' for a native PowerPoint file.` })
+      } catch (e: any) {
+        return NextResponse.json({ message: `I couldn't create the presentation (${e?.message}).` })
+      }
+    }
+    const composio: any = null
+    const availableTools: string[] = []
+
+    if (composioApiKey) {
+      try {
+        // Composio initialization and tool setup removed
+      } catch (error) {
+        console.warn("Composio initialization failed:", error)
+      }
+    }
+
+  let response = ""
+  try {
+    const ga2 = getGenAI()
+    const model = ga2.getGenerativeModel({ model: "gemini-2.5-flash" })
+
+    const formattedHistory = history
+      .filter((msg: any) => msg.content || msg.text)
+      .map((msg: any) => ({
+        role: msg.sender === "user" ? "user" : "model",
+        parts: [{ text: msg.content || msg.text }],
+      }))
+      .filter((msg: any, index: number) => {
+        if (index === 0 && msg.role !== "user") {
+          return false
+        }
+        return true
+      })
+
+    const chat = model.startChat({
+      history: formattedHistory,
+      generationConfig: {
+        temperature: 0.3,
+        topK: 40,
+        topP: 0.95,
+        maxOutputTokens: 2048,
+      },
+    })
+
+    const documentType = detectDocumentRequest(message)
+
+    let prompt = `You are an Executive Agent specialized in business strategy, decision-making, and high-level planning.`
+
+    prompt += `\n\nNote: Professional tools (Gmail, Calendar, Drive, Slack) are available through centralized authentication in the Management Center MCP tab.`
+
+    if (documentType && DOCUMENT_QUESTIONS[documentType as keyof typeof DOCUMENT_QUESTIONS]) {
+      const questions = DOCUMENT_QUESTIONS[documentType as keyof typeof DOCUMENT_QUESTIONS]
+
+      const hasAnsweredQuestions =
+        history.length > 2 &&
+        history.some(
+          (msg: any) =>
+            (msg.sender === "user" && (msg.content || msg.text).toLowerCase().includes("slide")) ||
+            (msg.content || msg.text).toLowerCase().includes("professional") ||
+            (msg.content || msg.text).toLowerCase().includes("executive"),
+        )
+
+      if (hasAnsweredQuestions) {
+        const documentContent = generateDocumentContent(documentType, message, history)
+        const documentResult = await createDocument(documentType, documentContent)
+
+        if (documentResult.success) {
+          prompt += `\n\nDOCUMENT CREATED SUCCESSFULLY: ${documentType.toUpperCase()}\n\nI have successfully created your professional ${documentType} with the following features:\n1. Executive-level content structure and organization\n2. Professional formatting and presentation standards\n3. Industry-standard templates and layouts\n4. Comprehensive content based on your requirements\n\nDocument file: ${documentResult.filename}\n\nThe document is now available in your documents panel and ready for download or further editing. You can also request specific modifications or create additional documents as needed.`
+        } else {
+          prompt += `\n\nDOCUMENT CREATION ERROR: I encountered an issue creating your ${documentType}: ${documentResult.error}\n\nI can still provide detailed guidance and structure for creating a professional ${documentType} manually. Would you like me to provide step-by-step instructions instead?`
+        }
+      } else {
+        prompt += `\n\nDOCUMENT CREATION MODE DETECTED: ${documentType.toUpperCase()}\n\nBefore creating your professional ${documentType}, I need to gather key information. Please answer these questions:\n\n${questions.map((q, i) => `${i + 1}. ${q}`).join("\n")}\n\nOnce you provide these details, I will create a professional ${documentType} with executive-level quality and automatically add it to your documents panel.`
+      }
+    } else {
+      prompt += `\n\nYour role is to:\n1. Create and edit professional documents (Word, Excel, PowerPoint, PDF)\n2. Provide strategic business insights and analysis\n3. Offer executive-level communication and planning support\n4. Manage document workflows and formatting\n\nDocument Creation Capabilities:\n- Word documents (.docx) with professional formatting\n- Excel spreadsheets (.xlsx) with charts and analysis\n- PowerPoint presentations (.pptx) with executive templates\n- PDF reports (.pdf) with comprehensive layouts\n- Real-time document editing and modification\n\nFocus on executive-level thinking, strategic perspectives, and high-quality deliverables.`
+    }
+
+    prompt += `\n\nUser query: ${message}`
+
+    const result = await chat.sendMessage(prompt)
+    response = result.response.text()
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || "LLM not configured" }, { status: 500 })
+  }
+
+  const responseData: any = { message: response }
+
+  if (documentType) {
+      const hasAnsweredQuestions =
+        history.length > 2 &&
+        history.some(
+          (msg: any) =>
+            (msg.sender === "user" && (msg.content || msg.text).toLowerCase().includes("slide")) ||
+            (msg.content || msg.text).toLowerCase().includes("professional") ||
+            (msg.content || msg.text).toLowerCase().includes("executive"),
+        )
+
+      if (!hasAnsweredQuestions) {
+        responseData.documentCreation = {
+          type: documentType,
+          stage: "questioning",
+          questions: DOCUMENT_QUESTIONS[documentType as keyof typeof DOCUMENT_QUESTIONS],
+        }
+      } else {
+        // Attempt to generate immediately based on provided info
+        const content = generateDocumentContent(documentType, message, history)
+        // Map 'presentation' to PPTX output/tab 'slides'
+        const result2 = await createDocument(documentType === "presentation" ? "presentation" : documentType, content)
+        if (result2.success) {
+          responseData.documentCreation = {
+            type: documentType,
+            stage: "created",
+            message: "Document has been created and is available in your documents panel",
+            url: result2.url,
+            tab: documentType === "presentation" ? "slides" : result2.tab,
+          }
+        } else {
+          responseData.documentCreation = {
+            type: documentType,
+            stage: "error",
+            message: result2.error || "Failed to create document",
+          }
+        }
+      }
+    }
+
+    return NextResponse.json(responseData)
+  } catch (error) {
+    console.error("Executive agent error:", error)
+    return NextResponse.json({ error: "Failed to get response from executive agent" }, { status: 500 })
+  }
+}

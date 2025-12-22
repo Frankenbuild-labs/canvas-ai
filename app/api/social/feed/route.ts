@@ -1,5 +1,8 @@
 // API route to fetch and cache social media feeds
 import { type NextRequest, NextResponse } from "next/server"
+import { cookies } from "next/headers"
+// Uses request.url and headers; force dynamic to avoid build-time prerender errors
+export const dynamic = 'force-dynamic'
 import { DatabaseService } from "@/lib/database"
 import { decryptToken, isTokenExpired } from "@/lib/auth-utils"
 
@@ -233,29 +236,56 @@ async function fetchTikTokPosts(accessToken: string): Promise<SocialPost[]> {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
-    const platform = searchParams.get("platform")
+    const platformParam = searchParams.get("platform")
+    const platform = platformParam || undefined
     const refresh = searchParams.get("refresh") === "true"
 
-    const userId = 1 // TODO: Get actual user ID from session
+    // Resolve unified user id via device -> composio mapping (same as other social routes)
+    const cookieStore = cookies()
+    const deviceId = cookieStore.get("device_id")?.value || ""
+    const userId = await DatabaseService.getOrCreateComposioUserIdForDevice(deviceId)
 
-    // Get user's connected accounts
-    const userAccounts = await DatabaseService.getUserSocialAccounts(userId)
+    // Get user's connected accounts (tolerate DB failures)
+    let userAccounts: any[] = []
+    try {
+      userAccounts = await DatabaseService.getUserSocialAccounts(userId)
+    } catch (e) {
+      console.warn("getUserSocialAccounts failed in feed route; proceeding with cached-only mode", e)
+      userAccounts = []
+    }
 
-    if (userAccounts.length === 0) {
+    // Filter accounts by platform if specified
+    const accountsToFetch = platform ? userAccounts.filter((acc) => acc.platform === platform) : userAccounts
+
+    // If no external accounts available, still return cached posts (posted via our app)
+    if (accountsToFetch.length === 0) {
+      const cachedPostsOnly = await DatabaseService.getSocialFeed(userId, platform)
+      const cachedOnlySocialPosts: SocialPost[] = cachedPostsOnly.map((cached: any) => ({
+        id: cached.platform_post_id,
+        platform: cached.platform,
+        content: cached.content,
+        media_url: Array.isArray(cached.media_urls) ? cached.media_urls[0] : undefined,
+        posted_at: cached.posted_at,
+        engagement: cached.engagement_data || {},
+      }))
+      cachedOnlySocialPosts.sort((a, b) => new Date(b.posted_at).getTime() - new Date(a.posted_at).getTime())
       return NextResponse.json({
         success: true,
-        posts: [],
+        posts: cachedOnlySocialPosts.slice(0, 50),
+        cached: true,
+        platforms: [],
         message: "No connected accounts found",
       })
     }
 
     const allPosts: SocialPost[] = []
 
-    // Filter accounts by platform if specified
-    const accountsToFetch = platform ? userAccounts.filter((acc) => acc.platform === platform) : userAccounts
-
     for (const account of accountsToFetch) {
       try {
+        // Skip external fetches for Composio-managed accounts (no provider tokens here)
+        if (!account.access_token || account.access_token === "composio") {
+          continue
+        }
         // Check if token is expired
         if (isTokenExpired(account.token_expires_at)) {
           console.warn(`Token expired for ${account.platform}`)
@@ -297,7 +327,7 @@ export async function GET(request: NextRequest) {
             platform: post.platform,
             platform_post_id: post.id,
             content: post.content,
-            media_url: post.media_url,
+            media_urls: post.media_url ? [post.media_url] : [],
             posted_at: post.posted_at,
             engagement_data: post.engagement,
           })
@@ -309,56 +339,45 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // If not refreshing, also get cached posts
-    if (!refresh) {
-      const cachedPosts = await DatabaseService.getSocialFeed(userId, platform || undefined)
+    // Always merge in cached posts to reflect items posted through our app,
+    // and use cached-only mode when we cannot refresh from providers.
+    const cachedPosts = await DatabaseService.getSocialFeed(userId, platform)
 
-      // Convert cached posts to SocialPost format
-      const cachedSocialPosts: SocialPost[] = cachedPosts.map((cached) => ({
-        id: cached.platform_post_id,
-        platform: cached.platform,
-        content: cached.content,
-        media_url: cached.media_url,
-        posted_at: cached.posted_at || cached.cached_at,
-        engagement: cached.engagement_data || {},
-      }))
+    // Convert cached posts to SocialPost format
+    const cachedSocialPosts: SocialPost[] = cachedPosts.map((cached: any) => ({
+      id: cached.platform_post_id,
+      platform: cached.platform,
+      content: cached.content,
+      media_url: Array.isArray(cached.media_urls) ? cached.media_urls[0] : undefined,
+      posted_at: cached.posted_at,
+      engagement: cached.engagement_data || {},
+    }))
 
-      // Merge with fresh posts (remove duplicates)
-      const postMap = new Map()
+    // Merge with fresh posts (remove duplicates)
+    const postMap = new Map<string, SocialPost>()
 
-      // Add fresh posts first (they take priority)
-      allPosts.forEach((post) => {
-        postMap.set(`${post.platform}_${post.id}`, post)
-      })
+    // Add fresh posts first (they take priority)
+    allPosts.forEach((post) => {
+      postMap.set(`${post.platform}_${post.id}`, post)
+    })
 
-      // Add cached posts if not already present
-      cachedSocialPosts.forEach((post) => {
-        const key = `${post.platform}_${post.id}`
-        if (!postMap.has(key)) {
-          postMap.set(key, post)
-        }
-      })
+    // Add cached posts if not already present
+    cachedSocialPosts.forEach((post) => {
+      const key = `${post.platform}_${post.id}`
+      if (!postMap.has(key)) {
+        postMap.set(key, post)
+      }
+    })
 
-      const mergedPosts = Array.from(postMap.values())
+    const mergedPosts = Array.from(postMap.values())
 
-      // Sort by posted date (newest first)
-      mergedPosts.sort((a, b) => new Date(b.posted_at).getTime() - new Date(a.posted_at).getTime())
-
-      return NextResponse.json({
-        success: true,
-        posts: mergedPosts.slice(0, 50), // Limit to 50 posts
-        cached: !refresh,
-        platforms: accountsToFetch.map((acc) => acc.platform),
-      })
-    }
-
-    // Sort fresh posts by date
-    allPosts.sort((a, b) => new Date(b.posted_at).getTime() - new Date(a.posted_at).getTime())
+    // Sort by posted date (newest first)
+    mergedPosts.sort((a, b) => new Date(b.posted_at).getTime() - new Date(a.posted_at).getTime())
 
     return NextResponse.json({
       success: true,
-      posts: allPosts.slice(0, 50),
-      cached: false,
+      posts: mergedPosts.slice(0, 50),
+      cached: !refresh,
       platforms: accountsToFetch.map((acc) => acc.platform),
     })
   } catch (error) {

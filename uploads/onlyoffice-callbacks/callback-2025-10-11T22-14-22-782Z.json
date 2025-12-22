@@ -1,0 +1,22 @@
+{
+  "payload": {
+    "key": "aHR0cHM6Ly9maWxlc2FtcGxlcy5jb20vc2FtcGxlcy9kb2N1bWVudC94bHN4L3Nh",
+    "status": 2,
+    "url": "http://localhost:8082/cache/files/data/aHR0cHM6Ly9maWxlc2FtcGxlcy5jb20vc2FtcGxlcy9kb2N1bWVudC94bHN4L3Nh_4029/output.xlsx/output.xlsx?md5=edt1lbNiXngryQCBA-OI2Q&expires=1760221763&shardkey=aHR0cHM6Ly9maWxlc2FtcGxlcy5jb20vc2FtcGxlcy9kb2N1bWVudC94bHN4L3Nh&filename=output.xlsx",
+    "history": {},
+    "users": [
+      "demo-user"
+    ],
+    "actions": [
+      {
+        "type": 0,
+        "userid": "demo-user"
+      }
+    ],
+    "lastsave": "2025-10-11T22:14:22.755Z",
+    "notmodified": null,
+    "filetype": "xlsx"
+  },
+  "iat": 1760220862,
+  "exp": 1760221162
+}

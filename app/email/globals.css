@@ -1,0 +1,119 @@
+@import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&family=Open+Sans:wght@300;400;500;600;700;800&family=Roboto:wght@100;300;400;500;700;900&family=Lato:wght@100;300;400;700;900&family=Montserrat:wght@100;200;300;400;500;600;700;800;900&family=Poppins:wght@100;200;300;400;500;600;700;800;900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Inherit all core theme tokens from styles/globals.css. Only define email-specific variables. */
+  :root {
+    --radius: 0.5rem;
+    /* Teal accents */
+    --accent-primary: 180 91% 31%; /* #069494 */
+    --accent-secondary: 180 91% 27%; /* #058080 */
+
+    /* Font family variables for email templates */
+    --font-quicksand: 'Quicksand', Helvetica, Arial, sans-serif;
+    --font-opensans: 'Open Sans', Helvetica, Arial, sans-serif;
+    --font-roboto: 'Roboto', Arial, sans-serif;
+    --font-lato: 'Lato', Arial, sans-serif;
+    --font-montserrat: 'Montserrat', Helvetica, sans-serif;
+    --font-poppins: 'Poppins', Arial, sans-serif;
+    --font-futura: 'Futura', 'Futura PT', Helvetica, Arial, sans-serif;
+    --font-playfair: 'Playfair Display', Georgia, serif;
+    --font-merriweather: 'Merriweather', Georgia, serif;
+  }
+
+  .dark {
+    /* Keep teal accents in dark mode, inherit all other tokens from main theme */
+    --accent-primary: 180 91% 31%; /* #069494 */
+    --accent-secondary: 180 91% 27%; /* #058080 */
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Email template font utility classes */
+@layer utilities {
+  .font-quicksand {
+    font-family: var(--font-quicksand);
+  }
+  
+  .font-opensans {
+    font-family: var(--font-opensans);
+  }
+  
+  .font-roboto {
+    font-family: var(--font-roboto);
+  }
+  
+  .font-lato {
+    font-family: var(--font-lato);
+  }
+  
+  .font-montserrat {
+    font-family: var(--font-montserrat);
+  }
+  
+  .font-poppins {
+    font-family: var(--font-poppins);
+  }
+  
+  .font-futura {
+    font-family: var(--font-futura);
+  }
+  
+  .font-playfair {
+    font-family: var(--font-playfair);
+  }
+  
+  .font-merriweather {
+    font-family: var(--font-merriweather);
+  }
+}
+
+/* Legacy styles for existing components that haven't been converted yet */
+.card {
+  @apply bg-card text-card-foreground rounded-lg border shadow-sm p-6;
+}
+
+.btn-primary {
+  @apply inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2;
+}
+
+/* Dark mode teal accents for primary/secondary buttons */
+.dark .btn-primary {
+  background-color: hsl(var(--accent-primary));
+  color: hsl(var(--primary-foreground));
+}
+.dark .btn-primary:hover {
+  background-color: hsl(var(--accent-secondary));
+}
+
+.dark .btn-secondary {
+  background-color: hsl(var(--secondary));
+  color: hsl(var(--secondary-foreground));
+  border-color: hsl(var(--accent-primary) / 0.35);
+}
+.dark .btn-secondary:hover {
+  background-color: hsl(var(--accent) / 0.6);
+}
+
+.btn-secondary {
+  @apply inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-secondary text-secondary-foreground hover:bg-secondary/80 h-10 px-4 py-2;
+}
+
+.btn-outline {
+  @apply inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2;
+}
+
+.form-input {
+  @apply flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
+}

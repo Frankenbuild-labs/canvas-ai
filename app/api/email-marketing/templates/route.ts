@@ -1,0 +1,80 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { listTemplates, createTemplate } from '@/lib/email-marketing/templates-supabase'
+import { TemplateType } from '@/types'
+
+// Test user ID for development
+const TEST_USER_ID = '11111111-1111-1111-1111-111111111111';
+
+export async function GET() {
+  try {
+    const { templates } = await listTemplates(TEST_USER_ID)
+    
+    return NextResponse.json({
+      success: true,
+      templates
+    })
+  } catch (error) {
+    console.error('Templates fetch error:', error)
+    return NextResponse.json(
+      { error: 'Failed to fetch templates' },
+      { status: 500 }
+    )
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const data = await request.json()
+    
+    // Validate required fields
+    if (!data.name?.trim() && !data.title?.trim()) {
+      return NextResponse.json(
+        { error: 'Template name is required' },
+        { status: 400 }
+      )
+    }
+    
+    if (!data.subject?.trim()) {
+      return NextResponse.json(
+        { error: 'Subject is required' },
+        { status: 400 }
+      )
+    }
+    
+    // Validate template_type is a valid value
+    const validTemplateTypes: TemplateType[] = ['Welcome Email', 'Newsletter', 'Promotional', 'Transactional']
+    if (data.template_type && !validTemplateTypes.includes(data.template_type)) {
+      return NextResponse.json(
+        { error: 'Invalid template type. Must be one of: ' + validTemplateTypes.join(', ') },
+        { status: 400 }
+      )
+    }
+    
+    if (!data.content?.trim()) {
+      return NextResponse.json(
+        { error: 'Content is required' },
+        { status: 400 }
+      )
+    }
+    
+    // Create the template with proper structure
+    const template = await createTemplate(TEST_USER_ID, {
+      title: (data.name || data.title).trim(),
+      subject: data.subject.trim(),
+      content: data.content.trim(),
+      template_type: data.template_type || 'html'
+    })
+    
+    return NextResponse.json({
+      success: true,
+      message: 'Template created successfully',
+      template
+    })
+  } catch (error) {
+    console.error('Template creation error:', error)
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to create template' },
+      { status: 500 }
+    )
+  }
+}

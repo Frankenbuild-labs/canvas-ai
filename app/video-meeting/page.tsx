@@ -1,124 +1,91 @@
-"use client"
-
-import { useEffect, useRef } from "react"
-import { Button } from "@/components/ui/button"
-import { ArrowLeft, Users, Video } from "lucide-react"
-import Link from "next/link"
-
-declare global {
-  interface Window {
-    JitsiMeetExternalAPI: any
-  }
-}
+"use client";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { ArrowLeft, Users, Video, Link2, Share2 } from "lucide-react";
+import { LiveKitRoom, VideoConference, useTracks } from "@livekit/components-react";
+import "@livekit/components-styles";
+import RecordOverlay from "@/components/video-meeting/RecordOverlay";
+import { useToast } from "@/hooks/use-toast";
+import ScreenShareBanner from "@/components/video-meeting/ScreenShareBanner";
+import AgentSettingsCard from "@/components/video-meeting/AgentSettings";
 
 export default function VideoMeetingPage() {
-  const jitsiContainerRef = useRef<HTMLDivElement>(null)
-  const apiRef = useRef<any>(null)
+  const [token, setToken] = useState<string | null>(null);
+  const [serverUrl, setServerUrl] = useState<string | null>(null);
+  const [room, setRoom] = useState<string>("canvas-room");
+  const [name, setName] = useState<string>("");
+  const [connecting, setConnecting] = useState(false);
+  const { toast } = useToast();
+  const [hasLocalShare, setHasLocalShare] = useState(false);
 
+  // Auto-fill name from localStorage if present
   useEffect(() => {
-    // Load Jitsi Meet External API script
-    const script = document.createElement("script")
-    script.src = "https://8x8.vc/vpaas-magic-cookie-67af3a0e9d39486c968aae27fd01ad78/external_api.js"
-    script.async = true
+    const savedName = typeof window !== "undefined" ? localStorage.getItem("meeting.displayName") : null;
+    if (savedName) setName(savedName);
+    // Pre-fill from URL params if present
+    if (typeof window !== "undefined") {
+      const sp = new URLSearchParams(window.location.search);
+      const r = sp.get("room");
+      const n = sp.get("name");
+      if (r) setRoom(r);
+      if (n) setName(n);
+    }
+  }, []);
 
-    script.onload = () => {
-      if (jitsiContainerRef.current && window.JitsiMeetExternalAPI) {
-        const jwtToken =
-          "eyJraWQiOiJ2cGFhcy1tYWdpYy1jb29raWUtNjdhZjNhMGU5ZDM5NDg2Yzk2OGFhZTI3ZmQwMWFkNzgvODczZTIyLVNBTVBMRV9BUFAiLCJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiJqaXRzaSIsImlzcyI6ImNoYXQiLCJpYXQiOjE3NTc4MTkxMDksImV4cCI6MTc1NzgyNjMwOSwibmJmIjoxNzU3ODE5MTA0LCJzdWIiOiJ2cGFhcy1tYWdpYy1jb29raWUtNjdhZjNhMGU5ZDM5NDg2Yzk2OGFhZTI3ZmQwMWFkNzgiLCJjb250ZXh0Ijp7ImZlYXR1cmVzIjp7ImxpdmVzdHJlYW1pbmciOnRydWUsImZpbGUtdXBsb2FkIjp0cnVlLCJvdXRib3VuZC1jYWxsIjp0cnVlLCJzaXAtb3V0Ym91bmQtY2FsbCI6dHJ1ZSwidHJhbnNjcmlwdGlvbiI6dHJ1ZSwibGlzdC12aXNpdG9ycyI6dHJ1ZSwicmVjb3JkaW5nIjp0cnVlLCJmbGlwIjpmYWxzZX0sInVzZXIiOnsiaGlkZGVuLWZyb20tcmVjb3JkZXIiOnRydWUsIm1vZGVyYXRvciI6dHJ1ZSwibmFtZSI6Impvc2h1YS5iZDciLCJpZCI6Imdvb2dsZS1vYXV0aDJ8MTA5ODY4NjUwNTkxMjcyNTU1Mzg1IiwiYXZhdGFyIjoiIiwiZW1haWwiOiJqb3NodWEuYmQ3QGdtYWlsLmNvbSJ9fSwicm9vbSI6IioifQ.BSKVZVVSom-s1HwXbe8nQigJR2pueyPKfwoXWJ6CZDUXqNTTJ1RsGXVT8_9I5_oB4yRiPwQHBacRdDMBKdLFhuqln1fdiVyQXuTAznqIYEavrHi5fSi3YJw7BwBgVjTQSytmVbs4C7HauixfGfQIDd8Vm7GynvcA-mi7_3gjc3gdadzZDYC4rEx2gk_DaMWP3pSENs_5WN4KA9AwWSgISZ8xXc60ZktU0V1uJNKMQca9vq3c21-0YNbd-uJ-6jljtJXh1JG6eqIPqk3zQhBKRm8UGyWoybxMXM9GlPR6ypPJflMkGPLkWIVnT0H8bNhw5cHlzzJFnMnTFM2nW6mSww"
+  const startMeeting = async () => {
+    setConnecting(true);
+    try {
+      const params: Record<string, string> = { room };
+      if (name.trim()) params.name = name.trim();
+      const qs = new URLSearchParams(params).toString();
+      const res = await fetch(`/api/livekit/token?${qs}`);
+      const data = await res.json();
+      if (res.ok) {
+        setToken(data.token);
+        setServerUrl(data.url);
+        if (name.trim()) localStorage.setItem("meeting.displayName", name.trim());
+      } else {
+        console.error("token error", data);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setConnecting(false);
+    }
+  };
 
-        apiRef.current = new window.JitsiMeetExternalAPI("8x8.vc", {
-          roomName:
-            "vpaas-magic-cookie-67af3a0e9d39486c968aae27fd01ad78/SampleAppExperimentalUnemploymentsSuspendWhatever",
-          parentNode: jitsiContainerRef.current,
-          jwt: jwtToken,
-          width: "100%",
-          height: "100%",
-          configOverwrite: {
-            startWithAudioMuted: false,
-            startWithVideoMuted: false,
-            enableWelcomePage: false,
-            prejoinPageEnabled: false,
-          },
-          interfaceConfigOverwrite: {
-            TOOLBAR_BUTTONS: [
-              "microphone",
-              "camera",
-              "closedcaptions",
-              "desktop",
-              "fullscreen",
-              "fodeviceselection",
-              "hangup",
-              "profile",
-              "chat",
-              "recording",
-              "livestreaming",
-              "etherpad",
-              "sharedvideo",
-              "settings",
-              "raisehand",
-              "videoquality",
-              "filmstrip",
-              "invite",
-              "feedback",
-              "stats",
-              "shortcuts",
-              "tileview",
-              "videobackgroundblur",
-              "download",
-              "help",
-              "mute-everyone",
-              "security",
-            ],
-            SETTINGS_SECTIONS: ["devices", "language", "moderator", "profile", "calendar"],
-            SHOW_JITSI_WATERMARK: false,
-            SHOW_WATERMARK_FOR_GUESTS: false,
-          },
-          userInfo: {
-            displayName: "joshua.bd7",
-            email: "joshua.bd7@gmail.com",
-          },
-        })
+  const makeInviteUrl = () => {
+    if (typeof window === "undefined") return "";
+    return `${window.location.origin}/video-meeting/${encodeURIComponent(room)}`;
+  };
 
-        apiRef.current.addEventListener("videoConferenceJoined", () => {
-          const loadingOverlay = document.getElementById("loading-overlay")
-          if (loadingOverlay) {
-            loadingOverlay.style.opacity = "0"
-            setTimeout(() => {
-              loadingOverlay.style.display = "none"
-            }, 300)
-          }
-        })
+  const copyInvite = async () => {
+    const url = makeInviteUrl();
+    try {
+      await navigator.clipboard.writeText(url);
+      toast({ title: "Invite link copied", description: "Share it with anyone to join this room." });
+    } catch (e) {
+      console.error(e);
+      toast({ title: "Copy failed", description: url, variant: "destructive" });
+    }
+  };
 
-        apiRef.current.addEventListener("readyToClose", () => {
-          window.location.href = "/"
-        })
-
-        apiRef.current.addEventListener("participantJoined", (participant: any) => {
-          console.log("[v0] Participant joined:", participant)
-        })
-
-        apiRef.current.addEventListener("participantLeft", (participant: any) => {
-          console.log("[v0] Participant left:", participant)
-        })
+  const shareInvite = async () => {
+    const url = makeInviteUrl();
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "Join my LiveKit room", url });
+        return;
+      } catch (e) {
+        // fall back to copy
       }
     }
-
-    document.head.appendChild(script)
-
-    // Cleanup function
-    return () => {
-      if (apiRef.current) {
-        apiRef.current.dispose()
-      }
-      if (document.head.contains(script)) {
-        document.head.removeChild(script)
-      }
-    }
-  }, [])
+    await copyInvite();
+  };
 
   return (
     <div className="h-screen flex flex-col bg-background">
-      {/* Header */}
       <div className="h-16 border-b bg-card flex items-center justify-between px-6">
         <div className="flex items-center gap-4">
           <Link href="/">
@@ -132,37 +99,73 @@ export default function VideoMeetingPage() {
             <h1 className="text-lg font-semibold">Video Meeting</h1>
           </div>
         </div>
-
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Users className="w-4 h-4" />
-          <span>Powered by Jitsi Meet</span>
-        </div>
-      </div>
-
-      {/* Meeting Container */}
-      <div className="flex-1 relative">
-        <div ref={jitsiContainerRef} className="w-full h-full" style={{ minHeight: "calc(100vh - 4rem)" }} />
-
-        {/* Loading State */}
-        <div
-          className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm"
-          id="loading-overlay"
-        >
-          <div className="text-center space-y-4">
-            <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
-            <div className="space-y-2">
-              <h2 className="text-xl font-semibold">Connecting to meeting...</h2>
-              <p className="text-muted-foreground">Please wait while we set up your video conference</p>
+        <div className="flex items-center gap-2">
+          {token && (
+            <div className="flex items-center gap-2">
+              <Button onClick={shareInvite} variant="outline" size="sm" className="gap-2">
+                <Share2 className="w-4 h-4" />
+                Invite
+              </Button>
+              <Button onClick={copyInvite} variant="ghost" size="sm" className="gap-2">
+                <Link2 className="w-4 h-4" />
+                Copy link
+              </Button>
             </div>
+          )}
+          <div className="flex items-center gap-2 text-sm text-muted-foreground pl-2">
+            <Users className="w-4 h-4" />
+            <span>Powered by LiveKit</span>
           </div>
         </div>
       </div>
 
-      <style jsx>{`
-        #loading-overlay {
-          transition: opacity 0.3s ease-in-out;
-        }
-      `}</style>
+      <div className="flex-1 min-h-0">
+        {token && serverUrl ? (
+          <LiveKitRoom serverUrl={serverUrl} token={token} connect options={{ dynacast: true }}>
+            <div className="relative h-full pb-4 md:pb-6">
+              <VideoConference />
+              <ScreenShareBanner onStateAction={(s) => setHasLocalShare(s.hasLocalShare)} />
+              <RecordOverlay disabled={hasLocalShare} />
+            </div>
+          </LiveKitRoom>
+        ) : (
+          <div className="h-full flex items-center justify-center px-6">
+            <div className="w-full max-w-4xl grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="bg-card border rounded-xl p-6 space-y-4">
+              <div className="flex items-center gap-2">
+                <Video className="w-5 h-5 text-primary" />
+                <h2 className="font-semibold">Join a Meeting</h2>
+              </div>
+              <label className="text-sm text-muted-foreground">Room name</label>
+              <input
+                value={room}
+                onChange={(e) => setRoom(e.target.value)}
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                placeholder="e.g. canvas-room"
+              />
+              <label className="text-sm text-muted-foreground">Your name</label>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                placeholder="Display name"
+              />
+              <div className="flex items-center gap-2">
+                <Button onClick={startMeeting} disabled={connecting || !room.trim()} className="flex-1">
+                  {connecting ? "Connecting…" : "Join"}
+                </Button>
+                <Button type="button" onClick={copyInvite} variant="secondary" disabled={!room.trim()} className="gap-2">
+                  <Link2 className="w-4 h-4" />
+                  Copy invite
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground text-center">Uses LiveKit for real-time audio/video.</p>
+              </div>
+              <AgentSettingsCard room={room} />
+            </div>
+          </div>
+        )}
+      </div>
     </div>
-  )
+  );
 }

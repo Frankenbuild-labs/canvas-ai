@@ -1,0 +1,34 @@
+{
+  "payload": {
+    "key": "aHR0cDovL2hvc3QuZG9ja2VyLmludGVybmFsOjMwMDIvZ2VuZXJhdGVkL3Byb2pl",
+    "status": 2,
+    "url": "http://localhost:8082/cache/files/data/aHR0cDovL2hvc3QuZG9ja2VyLmludGVybmFsOjMwMDIvZ2VuZXJhdGVkL3Byb2pl_6299/output.xlsx/output.xlsx?md5=ghmcu_Z70pOadHKyWyiYVw&expires=1763331849&shardkey=aHR0cDovL2hvc3QuZG9ja2VyLmludGVybmFsOjMwMDIvZ2VuZXJhdGVkL3Byb2pl&filename=output.xlsx",
+    "changesurl": "http://localhost:8082/cache/files/data/aHR0cDovL2hvc3QuZG9ja2VyLmludGVybmFsOjMwMDIvZ2VuZXJhdGVkL3Byb2pl_6299/changes.zip/changes.zip?md5=s_SJDcwSTEERGohuklmOiQ&expires=1763331849&shardkey=aHR0cDovL2hvc3QuZG9ja2VyLmludGVybmFsOjMwMDIvZ2VuZXJhdGVkL3Byb2pl&filename=changes.zip",
+    "history": {
+      "serverVersion": "8.1.1",
+      "changes": [
+        {
+          "created": "2025-11-16 20:25:08",
+          "user": {
+            "id": "demo-user",
+            "name": "CanvasAI"
+          }
+        }
+      ]
+    },
+    "users": [
+      "demo-user"
+    ],
+    "actions": [
+      {
+        "type": 0,
+        "userid": "demo-user"
+      }
+    ],
+    "lastsave": "2025-11-16T20:25:08.000Z",
+    "notmodified": false,
+    "filetype": "xlsx"
+  },
+  "iat": 1763330948,
+  "exp": 1763331248
+}

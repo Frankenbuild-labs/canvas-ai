@@ -1,7 +1,10 @@
 -- Create social media integration tables
+-- Required extension for gen_random_uuid()
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TABLE IF NOT EXISTS social_accounts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     platform VARCHAR(50) NOT NULL,
     platform_user_id VARCHAR(255) NOT NULL,
     username VARCHAR(255),
@@ -14,17 +17,8 @@ CREATE TABLE IF NOT EXISTS social_accounts (
     UNIQUE(user_id, platform, platform_user_id)
 );
 
-CREATE TABLE IF NOT EXISTS scheduled_posts (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
-    content TEXT NOT NULL,
-    media_urls TEXT[],
-    platforms TEXT[] NOT NULL,
-    scheduled_for TIMESTAMP NOT NULL,
-    status VARCHAR(20) DEFAULT 'pending', -- pending, posted, failed, cancelled
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
+-- NOTE: scheduled_posts table is created in 001_create_social_tables.sql
+-- Skipping duplicate table creation here
 
 CREATE TABLE IF NOT EXISTS post_results (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -39,7 +33,7 @@ CREATE TABLE IF NOT EXISTS post_results (
 
 CREATE TABLE IF NOT EXISTS social_feeds (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     platform VARCHAR(50) NOT NULL,
     platform_post_id VARCHAR(255) NOT NULL,
     content TEXT,
@@ -54,7 +48,6 @@ CREATE TABLE IF NOT EXISTS social_feeds (
 
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_social_accounts_user_platform ON social_accounts(user_id, platform);
-CREATE INDEX IF NOT EXISTS idx_scheduled_posts_user_scheduled ON scheduled_posts(user_id, scheduled_for);
-CREATE INDEX IF NOT EXISTS idx_scheduled_posts_status ON scheduled_posts(status);
+-- NOTE: scheduled_posts indexes created in 001_create_social_tables.sql
 CREATE INDEX IF NOT EXISTS idx_post_results_scheduled_post ON post_results(scheduled_post_id);
 CREATE INDEX IF NOT EXISTS idx_social_feeds_user_platform ON social_feeds(user_id, platform);

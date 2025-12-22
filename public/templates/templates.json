@@ -1,0 +1,28 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2025-11-15T12:20:00Z",
+  "categories": ["financial","legal","marketing","operations","hr"],
+  "templates": [
+    {
+      "id": "tmpl_fin_quarterly_report_v1",
+      "artifactType": "docx",
+      "complexityScore": 0.78,
+      "domain": ["financial"],
+      "status": "stub"
+    },
+    {
+      "id": "tmpl_legal_nda_standard_v1",
+      "artifactType": "docx",
+      "complexityScore": 0.42,
+      "domain": ["legal"],
+      "status": "stub"
+    },
+    {
+      "id": "tmpl_marketing_campaign_brief_v1",
+      "artifactType": "docx",
+      "complexityScore": 0.55,
+      "domain": ["marketing"],
+      "status": "stub"
+    }
+  ]
+}

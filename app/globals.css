@@ -58,6 +58,121 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground h-screen overflow-hidden;
   }
+}
+
+/* LiveKit theming tweaks: cleaner, higher-contrast chat panel */
+[data-lk-theme] .lk-chat,
+.lk-chat {
+  background-color: hsl(var(--card)) !important;
+  border-left: 1px solid hsl(var(--border));
+}
+
+[data-lk-theme] .lk-chat .lk-chat-scroller,
+[data-lk-theme] .lk-chat .lk-message-list {
+  background-color: transparent !important;
+}
+
+[data-lk-theme] .lk-chat-entry,
+.lk-chat-entry {
+  background-color: hsl(var(--card)) !important;
+  border-top: 1px solid hsl(var(--border));
+}
+
+[data-lk-theme] .lk-chat .lk-message,
+.lk-chat .lk-message {
+  background-color: hsl(var(--secondary)) !important;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  padding: 0.5rem 0.75rem;
+}
+
+[data-lk-theme] .lk-chat .lk-message .lk-message-text,
+.lk-chat .lk-message .lk-message-text {
+  line-height: 1.35;
+}
+
+/* CRM page surface tuning: slightly lighter containers for better contrast (dark mode only) */
+.dark .crm-surface {
+  /* Increase lightness a touch vs. global dark tokens */
+  --card: 0 0% 13%;      /* was 11% */
+  --secondary: 0 0% 18%; /* was 15% */
+  --accent: 0 0% 18%;    /* was 15% */
+  --muted: 0 0% 18%;     /* was 15% */
+  --border: 240 4% 20%;  /* was 16% */
+  --input: 240 4% 20%;   /* was 16% */
+}
+
+/* Enhanced Markdown typography */
+@layer components {
+  .prose {
+    /* Headings */
+    --tw-prose-headings: hsl(var(--foreground));
+    --tw-prose-bold: hsl(var(--foreground));
+    --tw-prose-links: hsl(var(--accent-foreground));
+    --tw-prose-counters: hsl(var(--muted-foreground));
+    --tw-prose-bullets: hsl(var(--muted-foreground));
+    --tw-prose-hr: hsl(var(--border));
+    --tw-prose-quotes: hsl(var(--foreground));
+    --tw-prose-quote-borders: hsl(var(--accent-primary));
+    --tw-prose-captions: hsl(var(--muted-foreground));
+    --tw-prose-code: hsl(var(--foreground));
+    --tw-prose-pre-code: hsl(var(--foreground));
+    --tw-prose-pre-bg: hsl(var(--secondary));
+    --tw-prose-th-borders: hsl(var(--border));
+    --tw-prose-td-borders: hsl(var(--border));
+  }
+
+  .dark .prose {
+    --tw-prose-links: hsl(var(--accent-primary));
+    --tw-prose-quote-borders: hsl(var(--accent-primary));
+  }
+
+  /* Link accents */
+  .prose a {
+    @apply text-blue-400 hover:text-blue-300 underline-offset-4 hover:underline transition-colors;
+  }
+
+  /* Headings spacing */
+  .prose h1, .prose h2, .prose h3 { @apply font-semibold tracking-tight; }
+  .prose h1 { @apply text-3xl mb-3; }
+  .prose h2 { @apply text-2xl mt-6 mb-2; }
+  .prose h3 { @apply text-xl mt-4 mb-2; }
+
+  /* Blockquotes */
+  .prose blockquote {
+    @apply border-l-4 border-accent-primary/60 bg-accent/20 px-4 py-2 rounded-r-md;
+  }
+
+  /* Tables */
+  .prose table { @apply w-full border border-border rounded-md overflow-hidden; }
+  .prose thead tr { @apply bg-secondary/50; }
+  .prose th, .prose td { @apply border border-border px-3 py-2 text-sm; }
+  .prose tbody tr:nth-child(even) { @apply bg-secondary/30; }
+
+  /* Images */
+  .prose img { @apply rounded-lg shadow-lg border border-border; }
+  .prose figure { @apply my-4; }
+  .prose figure img { @apply rounded-lg shadow-lg; }
+  .prose figure figcaption { @apply text-xs text-muted-foreground mt-1; }
+
+  /* Simple responsive image grid for Visual Examples */
+  .image-grid { display: grid; gap: 12px; }
+  @media (min-width: 640px) { .image-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (min-width: 1024px) { .image-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+  /* Code */
+  .prose code { @apply bg-muted/40 px-1.5 py-0.5 rounded text-[0.9em]; }
+  .prose pre { @apply bg-secondary border border-muted/30 rounded-lg p-3 text-sm overflow-x-auto; }
+
+  /* Collapsible containers (HTML details/summary) */
+  .prose details { @apply bg-secondary/30 border border-muted/20 rounded-lg p-3 my-3; }
+  .prose summary { @apply cursor-pointer font-medium text-accent-primary; }
+
+  /* Simple callouts */
+  .callout { @apply my-3 p-3 rounded-md border; }
+  .callout.info { @apply bg-blue-500/10 border-blue-500/30 text-blue-100; }
+  .callout.warn { @apply bg-amber-500/10 border-amber-500/30 text-amber-100; }
+  .callout.success { @apply bg-emerald-500/10 border-emerald-500/30 text-emerald-100; }
 }

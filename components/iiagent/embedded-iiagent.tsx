@@ -34,12 +34,12 @@ export default function EmbeddedIIAgent({ url }: Props) {
           <div className="flex flex-col items-center gap-2 text-center max-w-sm">
             <div className="h-10 w-10 rounded-full border-2 border-dashed animate-spin border-muted" />
             <h3 className="text-sm font-medium">
-              {status === 'checking' && 'Connecting ii-agent environment...'}
-              {status === 'idle' && 'Initializing ii-agent...'}
-              {status === 'down' && 'ii-agent unreachable'}
+              {status === 'checking' && 'Connecting Pegasus environment...'}
+              {status === 'idle' && 'Initializing Pegasus...'}
+              {status === 'down' && 'Pegasus unreachable'}
             </h3>
             {status === 'down' && (
-              <p className="text-xs text-muted-foreground">Verify the ii-agent frontend container is running and the URL is correct.</p>
+              <p className="text-xs text-muted-foreground">Verify the Pegasus frontend container is running and the URL is correct.</p>
             )}
             <p className="text-xs text-muted-foreground break-all">URL: {url}</p>
           </div>
@@ -50,9 +50,10 @@ export default function EmbeddedIIAgent({ url }: Props) {
         </div>
       )}
       <iframe
+        id="pegasus-iframe"
         src={`${url}${url.includes('?') ? '&' : '?'}embed=1`}
         className="w-full h-full border-0"
-        title="II-Agent Sandbox"
+        title="Pegasus Sandbox"
         allow="clipboard-read; clipboard-write"
       />
     </div>

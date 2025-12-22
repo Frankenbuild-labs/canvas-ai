@@ -25,6 +25,10 @@ import {
   Calendar,
   Building2,
   TrendingUp,
+  Phone,
+  Database,
+  FileVideo,
+  CreditCard,
 } from "lucide-react"
 import FlowTab from "./flow-tab"
 import { useState } from "react"
@@ -40,13 +44,15 @@ const businessSubItems = [
   { name: "Marketing", icon: <TrendingUp className="w-4 h-4" />, href: "/marketing" },
   { name: "CRM", icon: <Contact className="w-4 h-4" />, href: "/crm" },
   { name: "Email", icon: <Mail className="w-4 h-4" />, href: "/email" },
-  { name: "Scraper", icon: <Search className="w-4 h-4" />, href: "/scraper" },
+  { name: "Dial", icon: <Phone className="w-4 h-4" />, href: "/voice/dial" },
+  { name: "Payments", icon: <CreditCard className="w-4 h-4" />, href: "/payments" },
+  { name: "Lead Gen", icon: <Database className="w-4 h-4" />, href: "/business/lead-gen" },
 ]
 
 const creativeStudioSubItems = [
-  { name: "Video editor", icon: <VideoIcon className="w-4 h-4" />, href: "/video-editor" },
-  { name: "Designer", icon: <Paintbrush className="w-4 h-4" />, href: "/designer" },
-  { name: "Voice Clone", icon: <Mic className="w-4 h-4" />, href: "/voice-clone" },
+  { name: "Content", icon: <FileVideo className="w-4 h-4" />, href: "/creative-studio/content" },
+  { name: "Img/Vid Gen", icon: <VideoIcon className="w-4 h-4" />, href: "/creative-studio" },
+  { name: "Voice Clone", icon: <Mic className="w-4 h-4" />, href: "/creative-studio/voice" },
   { name: "Model Training", icon: <BrainCircuit className="w-4 h-4" />, href: "/model-training" },
 ]
 
@@ -54,6 +60,7 @@ const socialStationSubItems = [
   { name: "Dashboard", icon: <Calendar className="w-4 h-4" />, href: "/social-station/dashboard" },
   { name: "Schedule", icon: <Calendar className="w-4 h-4" />, href: "/social-station/schedule" },
   { name: "Influencer", icon: <Bot className="w-4 h-4" />, href: "/social-station/influencer" },
+  { name: "B-roll", icon: <FileVideo className="w-4 h-4" />, href: "/social-station/b-roll" },
 ]
 
 const addFeatures = ["Add Feature", "Add Feature"]

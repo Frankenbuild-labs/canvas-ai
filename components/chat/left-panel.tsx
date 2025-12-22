@@ -16,48 +16,8 @@ export default function LeftPanel({ togglePanel }: { togglePanel: () => void }) 
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false)
   const [editingTask, setEditingTask] = useState<Task | undefined>()
   const [editingNote, setEditingNote] = useState<Note | undefined>()
-  const [tasks, setTasks] = useState<Task[]>([
-    {
-      id: "1",
-      title: "Review project proposal",
-      description: "Go through the Q4 project proposal and provide feedback",
-      type: "task",
-      priority: "high",
-      dueDate: new Date(2024, 0, 20),
-      reminderDate: new Date(2024, 0, 19),
-      urls: ["https://docs.google.com/document/d/example"],
-      files: ["proposal.pdf"],
-      tags: ["work", "urgent"],
-      completed: false,
-      createdAt: new Date(2024, 0, 15),
-    },
-    {
-      id: "2",
-      title: "Team meeting",
-      description: "Weekly sync with the development team",
-      type: "appointment",
-      priority: "medium",
-      dueDate: new Date(2024, 0, 18),
-      urls: [],
-      files: [],
-      tags: ["meeting", "team"],
-      completed: false,
-      createdAt: new Date(2024, 0, 14),
-    },
-    {
-      id: "3",
-      title: "Buy groceries",
-      description: "Milk, bread, eggs, and vegetables",
-      type: "reminder",
-      priority: "low",
-      dueDate: new Date(2024, 0, 17),
-      urls: [],
-      files: [],
-      tags: ["personal"],
-      completed: true,
-      createdAt: new Date(2024, 0, 13),
-    },
-  ])
+  // Start with an empty task list; remove previous mock/sample tasks
+  const [tasks, setTasks] = useState<Task[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [filterType, setFilterType] = useState<"all" | Task["type"]>("all")
   const [filterStatus, setFilterStatus] = useState<"all" | "completed" | "pending">("all")
@@ -157,7 +117,7 @@ export default function LeftPanel({ togglePanel }: { togglePanel: () => void }) 
 
   return (
     <>
-      <aside className="w-72 flex flex-col bg-black/40 border-r border-border/20 relative h-full max-h-screen">
+      <aside className="w-72 flex flex-col bg-card border-r border-border relative h-full max-h-screen">
         <Button
           variant="ghost"
           size="icon"
@@ -169,7 +129,7 @@ export default function LeftPanel({ togglePanel }: { togglePanel: () => void }) 
         </Button>
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           <Tabs defaultValue="tasks" className="flex flex-col h-full">
-            <TabsList className="grid w-full grid-cols-3 bg-black/20 border-b border-border/10 rounded-none h-14 flex-shrink-0">
+            <TabsList className="grid w-full grid-cols-3 bg-card border-b rounded-none h-14 flex-shrink-0">
               <TabsTrigger
                 value="history"
                 className="data-[state=active]:bg-accent-primary data-[state=active]:text-primary-foreground text-muted-foreground rounded-md"

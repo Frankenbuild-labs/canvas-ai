@@ -54,6 +54,11 @@ Update `NEXT_PUBLIC_VSCODE_URL` in `.env.local` if you want another port or remo
 ### Installing Extensions
 Inside the embedded VS Code Web, open the Extensions view and install any web‑compatible extension. They persist in the code-server data directory (or the mounted volume if using Docker).
 
+### Docling MCP Health Check
+- Ensure you have the project Python environment configured and Docling MCP installed (`uvx --from=docling-mcp docling-mcp-server --help`).
+- Run `pnpm exec tsx scripts/check-docling.ts` to verify the Docling MCP server launches and advertises its tools.
+- The check runs Docling from an isolated `.docling-runtime` folder so the server ignores your app `.env` and avoids validation errors from unrelated variables.
+
 
 # Social Media Management Platform
 
@@ -66,6 +71,16 @@ A comprehensive social media management platform with AI-powered content creatio
 - **Content Scheduling**: Calendar-based scheduling with visual timeline
 - **AI Influencer**: Create AI personas for automated content generation
 - **Real-time Collaboration**: Chat-based interface for content planning
+- **Voice & TTS Studio** ⭐ NEW: Production-ready text-to-speech system with:
+  - 800+ pre-made voices in 40+ languages
+  - Voice cloning (upload 30-second samples)
+  - Batch TTS generation (up to 50 paragraphs)
+  - Multi-speaker dialogue support
+  - Emotion controls & speed adjustment
+  - Waveform audio player with download
+  - Free tier (2,500 chars/month) + BYOK support
+  - Real-time streaming for voice agents
+  - See `docs/VOICE_SETUP.md` for full documentation
 
 ## Quick Start
 
@@ -116,9 +131,31 @@ GOOGLE_API_KEY=your_google_ai_api_key
 NEXT_PUBLIC_BASE_URL=http://localhost:3000
 \`\`\`
 
+
 #### Social Media Platform OAuth Credentials
 
 ##### Instagram
+- LiveKit token endpoint: `app/api/livekit/token/route.ts`
+- Meeting UI: `app/video-meeting/page.tsx`
+- Recording endpoints: `app/api/recordings/*`
+- Agent settings (per meeting): `components/video-meeting/AgentSettings.tsx`
+- Save agent config into room metadata: `app/api/livekit/room/agent/route.ts`
+
+Environment variables required for LiveKit:
+
+- `LIVEKIT_API_KEY`
+- `LIVEKIT_API_SECRET`
+- `NEXT_PUBLIC_LIVEKIT_URL` (client WebSocket URL, e.g. wss://<project>.livekit.cloud)
+
+Optional agent integrations:
+
+- Beyond Presence: set `BEYOND_API_KEY` and provide an avatar ID (optional). See https://docs.bey.dev/get-started/agents
+- LLM provider (OpenAI): `OPENAI_API_KEY`
+
+Notes:
+
+- Agent settings are stored in the LiveKit room metadata under the `agents` key. Your LiveKit Agent worker can watch for metadata changes and join the room using the configured behavior. See LiveKit Agent starter: https://github.com/livekit-examples/agent-starter-react
+- If you're using Beyond Presence's speech-to-video integration, run the worker from their example repo and configure it to connect to your LiveKit Cloud project. The metadata written by this app is designed to be easy to consume by that worker.
 \`\`\`env
 INSTAGRAM_CLIENT_ID=your_instagram_client_id
 INSTAGRAM_CLIENT_SECRET=your_instagram_client_secret
@@ -250,94 +287,33 @@ COMPOSIO_API_KEY=your_composio_api_key
 - `POST /api/chat/executive` - Strategic planning AI agent
 - `POST /api/chat/vibe` - Creative content AI agent
 
+### Voice (SignalWire) Scaffold
+- Minimal, disabled-by-default integration to support click-to-call via SignalWire.
+- Docs: `docs/VOICE_SIGNALWIRE_README.md`
+- Try page: `/voice/dial` (requires server env configuration).
+
+### Documents Panel: Self-hosted OnlyOffice Embeds
+- Configure these env vars in `.env.local` to enable Docs/Sheets/PDF embeds using your own OnlyOffice Document Server:
+   - `NEXT_PUBLIC_ONLYOFFICE_DOCSERVER_URL` (e.g., https://docs.yourdomain.com)
+   - `NEXT_PUBLIC_ONLYOFFICE_DOC_URL` (public or signed URL to a .docx)
+   - `NEXT_PUBLIC_ONLYOFFICE_SHEET_URL` (public or signed URL to a .xlsx)
+   - `NEXT_PUBLIC_ONLYOFFICE_PDF_URL` (public or signed URL to a .pdf)
+
+Implementation details:
+- We load `${DOCSERVER_URL}/web-apps/apps/api/documents/api.js` and instantiate `DocsAPI.DocEditor` per tab.
+- For production, add a backend endpoint to mint JWT-signed editor configs and a `callbackUrl` to persist changes (see OnlyOffice Document Server docs for JWT and callbacks).
+
+
 ## Development
-### Roo / Agent Maestro Integration (Production-Ready Core)
+### Agent Maestro (Roo) Integration: Removed
 
-The Vibe agent button now drives a **real** Roo (Agent Maestro) task. All mock / simulated fallback streaming has been **removed**. If the sidecar is not reachable you will get a 5xx error—this is intentional so production misconfiguration is never masked.
+The Roo (Agent Maestro) sidecar integration has been fully removed. All `/api/chat/roo/*` routes now return HTTP 410 Gone intentionally. The embedded VS Code experience remains available and is not connected to any agent.
 
-Current request flow:
-1. Front-end issues a POST to `/api/chat/roo` with `{ message }`.
-2. The API route streams raw SSE events from the sidecar (`/roo/task`).
-3. On `taskCreated` the UI stores the `taskId`.
-4. Subsequent follow‑up / approval interactions go through:
-    - `POST /api/chat/roo/message` (continuation / follow-up)
-    - `POST /api/chat/roo/action` (approve / reject)
+Current agents and routes:
+- Vibe agent: `POST /api/chat/vibe` (Gemini 2.5‑flash)
+- CRM agent: `POST /api/agents/crm/chat` (OpenAI‑first with Gemini fallback)
 
-Supporting status probe:
-`GET /api/chat/roo/status` checks env + basic reachability and returns JSON diagnostic notes.
-
-#### Bring Up Sidecar via Docker Compose
-
-`docker-compose.yml` now contains a `roo-sidecar` service placeholder:
-```yaml
-roo-sidecar:
-   image: ghcr.io/roo-ai/agent-maestro:latest
-   ports:
-      - "23333:23333"
-   environment:
-      - PORT=23333
-      - LOG_LEVEL=info
-```
-
-Start everything:
-```powershell
-docker compose up -d --build
-pnpm dev
-```
-
-Then set in `.env.local`:
-```env
-ROO_SIDECAR_URL=http://localhost:23333/api/v1
-```
-
-Restart the Next.js dev server after changing env variables.
-
-#### VS Code / Extension Requirements
-Ensure the Roo Code extension is installed inside the embedded `code-server` (or whichever VS Code instance the sidecar inspects). Open the Extensions panel in the embedded editor and install it if missing.
-
-#### Streaming Event Shape (Passthrough)
-The backend does not reinterpret events; it forwards them. The UI currently extracts:
-- `message` events with JSON `{ text, partial }`
-- `taskCreated` (captures `taskId`)
-- `taskCompleted`
-- Follow-up ask events flagged via upstream payload (`ask === 'followup'`) to show approve / reject buttons.
-
-#### Configuration API
-Persisted (file-backed) config lives at `GET/POST /api/chat/roo/config` with fields:
-```json
-{ "model": "string", "temperature": "string", "autoApprove": true|false, "updatedAt": "iso-date" }
-```
-The task creation & follow-up routes inject `model` and `temperature`. If `autoApprove` is true the UI will automatically invoke the primary follow-up action when Roo asks for a follow-up.
-
-#### Health & Status Endpoints
-| Endpoint | Purpose |
-|----------|---------|
-| `/api/chat/roo/status` | Lightweight reachability + task create probe (basic) |
-| `/api/chat/roo/health` | Aggregated: reachability, task probe, config snapshot, timings |
-
-#### Troubleshooting
-| Symptom | Likely Cause | Action |
-|---------|--------------|--------|
-| 500/502 on `/api/chat/roo` | Sidecar not running or wrong `ROO_SIDECAR_URL` | Verify container running, curl sidecar base, fix env, restart dev server |
-| Status `reachable: false` | Port not exposed / firewall | Check compose port mapping, ensure no host collision |
-| No follow-up buttons | Upstream never emitted follow-up ask | Check sidecar logs for ask generation |
-| Stream stops abruptly | Sidecar closed SSE | Inspect sidecar logs, confirm task not erroring |
-
-#### SSE Robustness
-The chat client includes a heartbeat / timeout guard (15s heartbeat, 45s timeout). If no chunks arrive within the timeout it aborts the stream to avoid hanging UI state.
-
-#### Implemented Enhancements
-- Real-only sidecar (no mock fallback).
-- Config persistence API (`/api/chat/roo/config`).
-- Auto-approve follow-ups (optional via config).
-- SSE timeout guard.
-- Health endpoint (`/api/chat/roo/health`).
-
-#### Remaining / Future (Deferred)
-- Rich visualization for reasoning / tools.
-- Multi-tenant config storage (DB) & auth.
-- Raw event debug viewer toggle.
-- Structured error telemetry export.
+If you see references to the sidecar in older docs or comments, they are historical and no longer applicable. There is no configuration required for Roo. Set `NEXT_PUBLIC_VSCODE_URL` to embed your own code-server or OpenVSCode server if desired.
 
 
 ### Project Structure

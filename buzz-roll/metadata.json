@@ -1,0 +1,7 @@
+{
+  "name": "Buzz Roll",
+  "description": "The ultimate AI-powered content creation studio for shorts and reels. Stitch videos, generate AI scripts, and create lifelike voiceovers in one seamless timeline.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}

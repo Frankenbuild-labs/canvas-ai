@@ -51,6 +51,43 @@ E2B_API_KEY="your_e2b_api_key"
 \`\`\`
 
 #### Social Media Integrations
+# #### Bright Data MCP (Lead Generation)
+```bash
+# Bright Data API token (used by local MCP server npx @brightdata/mcp)
+BRIGHTDATA_API_TOKEN="your_bright_data_api_token"
+
+# Optional Bright Data zone (defaults to "leadgen")
+BRIGHTDATA_ZONE="leadgen"
+
+# Optional feature flags to enable provider & advanced depths
+FEATURE_LEADGEN_BRIGHTDATA="1"   # allow Bright Data provider
+FEATURE_LEADGEN_ADVANCED="1"     # allow Deep Dive / Comprehensive depth
+
+
+# Optional: Dataset API (use when you have profile URLs)
+# If set, and the user pastes profile URLs into the keywords box,
+# the proxy will use the Bright Data Dataset API instead of the collector for that platform.
+BRIGHTDATA_LINKEDIN_DATASET_ID="gd_xxxxxxxxxxxxxxxxxx"
+BRIGHTDATA_TWITTER_X_DATASET_ID="gd_xxxxxxxxxxxxxxxxxx"
+BRIGHTDATA_INSTAGRAM_DATASET_ID="gd_xxxxxxxxxxxxxxxxxx"
+
+# Optional: override proxy endpoint (defaults to /api/brightdata/proxy)
+# BRIGHTDATA_PROXY_ENDPOINT="/api/brightdata/proxy"
+## Bright Data Dataset Search Mode
+Only the API token is required. Provider calls `https://api.brightdata.com/datasets/v1/search` directly.
+Remove collector endpoint requirements unless you want custom collectors.
+Required:
+BRIGHTDATA_API_TOKEN="your_bright_data_api_token"
+Optional:
+BRIGHTDATA_ZONE="leadgen"
+```
+
+Launch MCP server locally (development):
+```powershell
+$env:API_TOKEN=$env:BRIGHTDATA_API_TOKEN; npx @brightdata/mcp
+```
+Do NOT commit real tokens or `.env.local`. Rotate immediately if leaked.
+
 \`\`\`bash
 # Composio (Social Media Management)
 COMPOSIO_API_KEY="your_composio_api_key"

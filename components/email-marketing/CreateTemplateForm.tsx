@@ -1,0 +1,1965 @@
+"use client";
+
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Sparkles,
+  CheckCircle,
+  AlertCircle,
+  Info,
+  X,
+  FileText,
+  Image,
+  File,
+  Plus,
+  Link,
+  Globe,
+  Wand2,
+  RefreshCw,
+  ExternalLink,
+} from "lucide-react";
+import ToastContainer from "@/components/email-marketing/ToastContainer";
+import HtmlEditingToolbar from "./HtmlEditingToolbar";
+import { Settings } from "@/lib/email-marketing/types";
+import { useTemplateSettings } from "@/hooks/email-marketing/useTemplateSettings";
+import { useSelectionManager } from "@/hooks/email-marketing/useSelectionManager";
+import { useToast } from "@/hooks/email-marketing/useToast";
+import {
+  applyFormat,
+  cleanupHtml,
+  applyStylesToContent,
+} from "@/lib/email-marketing/utils/htmlFormatting";
+
+interface ContextItem {
+  id: string;
+  url: string;
+  type: "file" | "webpage";
+  status: "pending" | "analyzing" | "ready" | "error";
+  title?: string;
+  error?: string;
+}
+
+// Local progress bar component to avoid inline styles
+function AIProgressBar({ status, progress }: { status: string; progress: number }) {
+  const steps = [
+    0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100,
+  ] as const
+  const nearest = steps.reduce((prev, curr) => Math.abs(curr - progress) < Math.abs(prev - progress) ? curr : prev, 0)
+  // Predeclare all possible classes so Tailwind JIT includes them
+  const widthClassMap: Record<number, string> = {
+    0: "w-[0%]",
+    5: "w-[5%]",
+    10: "w-[10%]",
+    15: "w-[15%]",
+    20: "w-[20%]",
+    25: "w-[25%]",
+    30: "w-[30%]",
+    35: "w-[35%]",
+    40: "w-[40%]",
+    45: "w-[45%]",
+    50: "w-[50%]",
+    55: "w-[55%]",
+    60: "w-[60%]",
+    65: "w-[65%]",
+    70: "w-[70%]",
+    75: "w-[75%]",
+    80: "w-[80%]",
+    85: "w-[85%]",
+    90: "w-[90%]",
+    95: "w-[95%]",
+    100: "w-[100%]",
+  }
+  const widthClass = widthClassMap[nearest]
+  return (
+    <div className="p-3 bg-accent border border-border rounded-lg">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm text-foreground">{status}</span>
+        <span className="text-xs text-muted-foreground">{Math.max(0, Math.min(100, Math.round(progress)))}%</span>
+      </div>
+      <div className="w-full bg-muted rounded-full h-2">
+        <div className={`bg-primary h-2 rounded-full transition-all duration-300 ${widthClass}`}></div>
+        <span className="sr-only">Progress: {Math.max(0, Math.min(100, Math.round(progress)))}%</span>
+      </div>
+    </div>
+  )
+}
+
+// Link editing dialog component
+interface LinkDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSave: (url: string, text: string) => void;
+  onVisit?: (url: string) => void;
+  initialUrl?: string;
+  initialText?: string;
+}
+
+function LinkDialog({
+  isOpen,
+  onClose,
+  onSave,
+  onVisit,
+  initialUrl = "",
+  initialText = "",
+}: LinkDialogProps) {
+  const [url, setUrl] = useState(initialUrl);
+  const [text, setText] = useState(initialText);
+
+  useEffect(() => {
+    setUrl(initialUrl);
+    setText(initialText);
+  }, [initialUrl, initialText]);
+
+  const handleSave = () => {
+    if (!url.trim() || !text.trim()) return;
+    onSave(url.trim(), text.trim());
+    onClose();
+  };
+
+  const handleVisit = () => {
+    if (url.trim() && onVisit) {
+      onVisit(url.trim());
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleSave();
+    }
+    if (e.key === "Escape") {
+      onClose();
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center space-x-2">
+            <Link className="h-5 w-5 text-primary" />
+            <span>{initialUrl ? "Edit Link" : "Add Link"}</span>
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 pt-4">
+          <div className="space-y-2">
+            <Label htmlFor="link-url">URL *</Label>
+            <Input
+              id="link-url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="https://example.com"
+              autoFocus
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="link-text">Link Text *</Label>
+            <Input
+              id="link-text"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Click here"
+            />
+          </div>
+          <div className="flex justify-between items-center pt-4">
+            <div className="flex space-x-2">
+              {initialUrl && onVisit && (
+                <Button
+                  variant="outline"
+                  onClick={handleVisit}
+                  className="flex items-center space-x-1"
+                  type="button"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  <span>Visit</span>
+                </Button>
+              )}
+            </div>
+            <div className="flex space-x-2">
+              <Button variant="outline" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSave}
+                disabled={!url.trim() || !text.trim()}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground"
+              >
+                {initialUrl ? "Update Link" : "Add Link"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export default function CreateTemplateForm() {
+  const router = useRouter();
+  const { toasts, addToast, removeToast } = useToast();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [isAIGenerating, setIsAIGenerating] = useState(false);
+  const [isAIEditing, setIsAIEditing] = useState(false);
+  const [isGeneratingSubject, setIsGeneratingSubject] = useState(false);
+  const [aiPrompt, setAIPrompt] = useState("");
+  const [editPrompt, setEditPrompt] = useState("");
+  const [streamingContent, setStreamingContent] = useState("");
+  const [aiStatus, setAiStatus] = useState("");
+  const [aiProgress, setAiProgress] = useState(0);
+  const [hasGeneratedContent, setHasGeneratedContent] = useState(false);
+  const [showEditPrompt, setShowEditPrompt] = useState(false); // New state for showing edit section
+
+  // Simple editing states
+  const [isEditing, setIsEditing] = useState(false);
+
+  // Link editing states
+  const [showLinkDialog, setShowLinkDialog] = useState(false);
+  const [linkDialogData, setLinkDialogData] = useState<{
+    url: string;
+    text: string;
+    element?: HTMLElement;
+  }>({ url: "", text: "" });
+  // Use shared selection manager hook
+  const {
+    saveCurrentSelection,
+    restoreSelection,
+    clearSelection,
+    hasValidSelection,
+  } = useSelectionManager();
+
+  // Context items state - maintain separate contexts but allow sharing
+  const [contextItems, setContextItems] = useState<ContextItem[]>([]);
+  const [editContextItems, setEditContextItems] = useState<ContextItem[]>([]);
+  const [showContextInput, setShowContextInput] = useState(false);
+  const [showEditContextInput, setShowEditContextInput] = useState(false);
+  const [contextUrl, setContextUrl] = useState("");
+  const [editContextUrl, setEditContextUrl] = useState("");
+  const [preserveContext, setPreserveContext] = useState(true); // New state for context preservation
+
+  // Refs for autofocus and auto-resize
+  const aiPromptRef = useRef<HTMLTextAreaElement>(null);
+  const editPromptRef = useRef<HTMLTextAreaElement>(null);
+  const contentRef = useRef<HTMLTextAreaElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
+  const isUpdatingFromStateRef = useRef<boolean>(false);
+  const cursorPositionRef = useRef<{
+    selection: Selection | null;
+    range: Range | null;
+  }>({ selection: null, range: null });
+
+  const [formData, setFormData] = useState({
+    name: "",
+    subject: "",
+    content: "",
+    template_type: "Newsletter", // Use exact value from select-dropdown
+    active: true,
+  });
+
+  // Prefill content if user selected a free template
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href)
+      if (url.searchParams.get('prefill') === '1') {
+        const html = sessionStorage.getItem('prefill_template_html')
+        const name = sessionStorage.getItem('prefill_template_name')
+        if (html) {
+          setFormData(prev => ({ ...prev, content: html, name: name || prev.name }))
+        }
+        // clear after use
+        sessionStorage.removeItem('prefill_template_html')
+        sessionStorage.removeItem('prefill_template_name')
+      }
+    } catch {}
+  }, [])
+
+  // Use shared settings hook
+  const { settings, primaryColor } = useTemplateSettings();
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const contentSyncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Auto-resize textarea function
+  const autoResize = (textarea: HTMLTextAreaElement) => {
+    textarea.style.height = "auto";
+    textarea.style.height = textarea.scrollHeight + "px";
+  };
+
+  // Save current cursor position
+  const saveCursorPosition = () => {
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      cursorPositionRef.current = {
+        selection: selection,
+        range: range.cloneRange(),
+      };
+    }
+  };
+
+  // Restore cursor position
+  const restoreCursorPosition = () => {
+    const { selection, range } = cursorPositionRef.current;
+    if (selection && range) {
+      try {
+        selection.removeAllRanges();
+        selection.addRange(range);
+      } catch (error) {
+        // Ignore errors if range is no longer valid
+        console.warn("Could not restore cursor position:", error);
+      }
+    }
+  };
+
+  // Handle keyboard shortcuts for AI prompt textareas
+  const handleKeyDown = (
+    e: React.KeyboardEvent<HTMLTextAreaElement>,
+    action: "generate" | "edit"
+  ) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      if (action === "generate") {
+        handleAIGenerate();
+      } else if (action === "edit") {
+        handleAIEdit();
+      }
+    }
+  };
+
+  // Set up auto-resize for textareas
+  useEffect(() => {
+    const textareas = [
+      aiPromptRef.current,
+      editPromptRef.current,
+      contentRef.current,
+    ].filter(Boolean) as HTMLTextAreaElement[];
+
+    textareas.forEach((textarea) => {
+      const handleInput = () => autoResize(textarea);
+      textarea.addEventListener("input", handleInput);
+
+      // Initial resize
+      autoResize(textarea);
+
+      return () => textarea.removeEventListener("input", handleInput);
+    });
+  }, []);
+
+  // Initialize content in contentEditable divs
+  useEffect(() => {
+    if (previewRef.current && !previewRef.current.innerHTML) {
+      previewRef.current.innerHTML =
+        formData.content || "<p>Start typing your email content here...</p>";
+      applyStylesToContent(previewRef.current, primaryColor);
+    }
+  }, [formData.content, primaryColor]);
+
+  // Update contentEditable divs when content changes externally (like from AI)
+  useEffect(() => {
+    if (
+      previewRef.current &&
+      previewRef.current.innerHTML !== formData.content &&
+      !isUpdatingFromStateRef.current
+    ) {
+      // Only update if the content is different and we're not currently typing
+      const isActiveElement = document.activeElement === previewRef.current;
+      if (!isActiveElement) {
+        isUpdatingFromStateRef.current = true;
+        previewRef.current.innerHTML =
+          formData.content || "<p>Start typing your email content here...</p>";
+        applyStylesToContent(previewRef.current, primaryColor);
+        isUpdatingFromStateRef.current = false;
+      } else {
+        // If the user is actively typing, save cursor, update, then restore
+        saveCursorPosition();
+        isUpdatingFromStateRef.current = true;
+        previewRef.current.innerHTML =
+          formData.content || "<p>Start typing your email content here...</p>";
+        applyStylesToContent(previewRef.current, primaryColor);
+
+        // Restore cursor position after update
+        setTimeout(() => {
+          restoreCursorPosition();
+          isUpdatingFromStateRef.current = false;
+        }, 0);
+      }
+    }
+  }, [formData.content, primaryColor]);
+
+  // Handle format application from toolbar
+  const handleFormatApply = (format: string, value?: string) => {
+    const previewDiv = previewRef.current;
+    if (!previewDiv) return;
+
+    // Get primary color from settings
+    // primaryColor is now provided by useTemplateSettings hook
+
+    // Apply formatting directly to the contentEditable div
+    applyFormat(previewDiv, format, value, primaryColor);
+
+    // Update React state with the new content
+    const updatedContent = previewDiv.innerHTML;
+    setFormData((prev) => ({
+      ...prev,
+      content: updatedContent,
+    }));
+  };
+
+  // Link management functions - now using shared hook
+
+  const handleAddLink = () => {
+    if (!hasValidSelection()) {
+      addToast("Please select some text to convert to a link", "error");
+      return;
+    }
+
+    const { selectedText } = saveCurrentSelection();
+    setLinkDialogData({ url: "", text: selectedText });
+    setShowLinkDialog(true);
+  };
+
+  const handleEditLink = (element: HTMLElement) => {
+    const url = element.getAttribute("href") || "";
+    const text = element.textContent || "";
+
+    setLinkDialogData({ url, text, element });
+    setShowLinkDialog(true);
+  };
+
+  const handleVisitLink = (url: string) => {
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  const handleLinkSave = (url: string, text: string) => {
+    if (linkDialogData.element) {
+      // Editing existing link
+      linkDialogData.element.setAttribute("href", url);
+      linkDialogData.element.textContent = text;
+      // Don't force color - preserve existing styles
+    } else {
+      // Creating new link from selection
+      restoreSelection();
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        const link = document.createElement("a");
+        link.href = url;
+        link.textContent = text;
+        // Apply default link styling for new links
+        link.style.color = primaryColor;
+        link.style.textDecoration = "underline";
+
+        // Add external link icon for external links
+        if (!url.startsWith("/") && !url.includes(window.location.hostname)) {
+          const icon = document.createElement("span");
+          icon.innerHTML =
+            ' <svg class="inline w-3 h-3 ml-1" fill="currentColor" viewBox="0 0 20 20"><path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z"></path><path d="M5 5a2 2 0 00-2 2v6a2 2 0 002 2h6a2 2 0 002-2v-2a1 1 0 10-2 0v2H5V7h2a1 1 0 000-2H5z"></path></svg>';
+          link.appendChild(icon);
+        }
+
+        // Prevent default click behavior during editing
+        link.addEventListener("click", (e) => {
+          if (isEditing) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        });
+
+        range.deleteContents();
+        range.insertNode(link);
+        selection.removeAllRanges();
+      }
+    }
+
+    // Update form data with new content
+    const previewDiv = previewRef.current;
+    if (previewDiv) {
+      setFormData((prev) => ({
+        ...prev,
+        content: previewDiv.innerHTML,
+      }));
+    }
+
+    // Clear saved selection
+    clearSelection();
+
+    addToast("Link updated successfully", "success");
+  };
+
+  // Enhanced inline editing with link management - Fixed function signature
+  const startEditMode = useCallback(
+    (previewRef: React.RefObject<HTMLDivElement>) => {
+      if (!previewRef.current || isEditing || isAIGenerating || isAIEditing)
+        return;
+
+      console.log("Starting edit mode");
+      setIsEditing(true);
+
+      const previewDiv = previewRef.current;
+      previewDiv.contentEditable = "true";
+      previewDiv.style.outline = "2px solid #3b82f6";
+      previewDiv.style.outlineOffset = "2px";
+      previewDiv.style.backgroundColor = "#fefefe";
+      previewDiv.focus();
+
+      // Store the initial content for comparison
+      const initialContent = previewDiv.innerHTML;
+      let toolbar: HTMLDivElement | null = null;
+
+      // Function to position toolbar relative to selection
+      const positionToolbar = (targetRect: DOMRect) => {
+        if (!toolbar) return;
+
+        const toolbarHeight = 44; // Approximate toolbar height
+        const margin = 8;
+        const viewportHeight = window.innerHeight;
+        const viewportWidth = window.innerWidth;
+
+        // Calculate position
+        let top = targetRect.top - toolbarHeight - margin;
+        let left = targetRect.left + targetRect.width / 2;
+
+        // If not enough space above, position below
+        if (top < margin) {
+          top = targetRect.bottom + margin;
+        }
+
+        // Center the toolbar horizontally relative to selection, but keep it in viewport
+        const toolbarWidth = 280; // Approximate toolbar width
+        left = Math.max(
+          margin,
+          Math.min(
+            viewportWidth - toolbarWidth - margin,
+            left - toolbarWidth / 2
+          )
+        );
+
+        toolbar.style.top = `${top}px`;
+        toolbar.style.left = `${left}px`;
+        toolbar.style.display = "flex";
+      };
+
+      // Function to hide toolbar
+      const hideToolbar = () => {
+        if (toolbar) {
+          toolbar.style.display = "none";
+        }
+      };
+
+      // Function to show toolbar with add link button
+      const showLinkToolbar = (targetRect: DOMRect) => {
+        if (!toolbar) return;
+
+        toolbar.innerHTML = `
+        <button id="add-link-btn" class="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center space-x-1" title="Add link to selected text">
+          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M12.586 4.586a2 2 0 112.828 2.828l-3 3a2 2 0 01-2.828 0 1 1 0 00-1.414 1.414 4 4 0 005.656 0l3-3a4 4 0 00-5.656-5.656l-1.5 1.5a1 1 0 101.414 1.414l1.5-1.5z" clip-rule="evenodd"></path>
+            <path fill-rule="evenodd" d="M7.414 15.414a2 2 0 01-2.828-2.828l3-3a2 2 0 012.828 0 1 1 0 001.414-1.414 4 4 0 00-5.656 0l-3 3a4 4 0 005.656 5.656l1.5-1.5a1 1 0 00-1.414-1.414l-1.5 1.5z" clip-rule="evenodd"></path>
+          </svg>
+          <span>Add Link</span>
+        </button>
+  <div class="text-xs text-muted-foreground px-2 whitespace-nowrap">Press Esc to finish</div>
+      `;
+
+        positionToolbar(targetRect);
+
+        // Add event listener for add link button
+        const addLinkBtn = toolbar.querySelector(
+          "#add-link-btn"
+        ) as HTMLButtonElement;
+        addLinkBtn?.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          handleAddLink();
+        });
+      };
+
+      // Function to show toolbar with edit link buttons
+      const showEditLinkToolbar = (
+        targetRect: DOMRect,
+        linkElement: HTMLElement
+      ) => {
+        if (!toolbar) return;
+
+        const url = linkElement.getAttribute("href") || "";
+
+        toolbar.innerHTML = `
+        <button id="edit-link-btn" class="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center space-x-1" title="Edit link">
+          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"></path>
+          </svg>
+          <span>Edit</span>
+        </button>
+        <button id="visit-link-btn" class="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 flex items-center space-x-1" title="Visit link in new tab">
+          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z"></path>
+            <path d="M5 5a2 2 0 00-2 2v6a2 2 0 002 2h6a2 2 0 002-2v-2a1 1 0 10-2 0v2H5V7h2a1 1 0 000-2H5z"></path>
+          </svg>
+          <span>Visit</span>
+        </button>
+  <div class="text-xs text-muted-foreground px-2 whitespace-nowrap">Press Esc to finish</div>
+      `;
+
+        positionToolbar(targetRect);
+
+        // Add event listener for edit link button
+        const editLinkBtn = toolbar.querySelector(
+          "#edit-link-btn"
+        ) as HTMLButtonElement;
+        editLinkBtn?.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          handleEditLink(linkElement);
+        });
+
+        // Add event listener for visit link button
+        const visitLinkBtn = toolbar.querySelector(
+          "#visit-link-btn"
+        ) as HTMLButtonElement;
+        visitLinkBtn?.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (url) {
+            handleVisitLink(url);
+          }
+        });
+      };
+
+      // Create toolbar (initially hidden)
+      toolbar = document.createElement("div");
+      toolbar.className =
+        "fixed bg-card border border-border rounded-lg shadow-lg p-2 items-center space-x-2 z-50";
+      toolbar.style.display = "none";
+      document.body.appendChild(toolbar);
+
+      // Handle text selection changes
+      const handleSelectionChange = () => {
+        const selection = window.getSelection();
+        if (!selection || !previewDiv.contains(selection.anchorNode)) {
+          hideToolbar();
+          return;
+        }
+
+        if (selection.isCollapsed) {
+          hideToolbar();
+          return;
+        }
+
+        // Check if selection is plain text (not within a link)
+        const range = selection.getRangeAt(0);
+        const startContainer = range.startContainer;
+        const endContainer = range.endContainer;
+
+        // Check if selection spans across or is within a link
+        const isInLink = (node: Node | null): HTMLElement | null => {
+          let current = node;
+          while (current && current !== previewDiv) {
+            if (
+              current.nodeType === Node.ELEMENT_NODE &&
+              (current as Element).tagName === "A"
+            ) {
+              return current as HTMLElement;
+            }
+            current = current.parentNode;
+          }
+          return null;
+        };
+
+        const startLink = isInLink(
+          startContainer.nodeType === Node.TEXT_NODE
+            ? startContainer.parentNode
+            : startContainer
+        );
+        const endLink = isInLink(
+          endContainer.nodeType === Node.TEXT_NODE
+            ? endContainer.parentNode
+            : endContainer
+        );
+
+        // Only show add link button for plain text selections (not in links)
+        if (!startLink && !endLink) {
+          const rect = range.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            showLinkToolbar(rect);
+          }
+        } else {
+          hideToolbar();
+        }
+      };
+
+      // Add selection change listener
+      document.addEventListener("selectionchange", handleSelectionChange);
+
+      // Add click handlers for existing links
+      const links = previewDiv.querySelectorAll("a");
+      const linkClickHandlers = new Map<HTMLElement, (e: Event) => void>();
+
+      links.forEach((link) => {
+        // Ensure link has proper styling
+        link.style.color = "#3b82f6";
+        link.style.textDecoration = "underline";
+
+        // Disable link navigation during editing
+        const originalHref = link.href;
+        link.href = "javascript:void(0)";
+
+        const clickHandler = (e: Event) => {
+          e.preventDefault();
+          e.stopPropagation();
+
+          // Show edit link toolbar
+          const rect = link.getBoundingClientRect();
+          showEditLinkToolbar(rect, link);
+
+          // Clear any text selection
+          window.getSelection()?.removeAllRanges();
+        };
+
+        link.addEventListener("click", clickHandler);
+        linkClickHandlers.set(link, clickHandler);
+
+        // Add visual indicator for editable links
+        link.style.position = "relative";
+        link.style.cursor = "pointer";
+        link.classList.add("hover:bg-blue-50");
+
+        // Store original href for restoration
+        link.setAttribute("data-original-href", originalHref);
+      });
+
+      // Function to finish editing and update state
+      const finishEditing = () => {
+        if (!previewDiv || !isEditing) return;
+
+        console.log("Finishing edit mode");
+        previewDiv.contentEditable = "false";
+        previewDiv.style.outline = "none";
+        previewDiv.style.outlineOffset = "initial";
+        previewDiv.style.backgroundColor = "transparent";
+
+        // Remove toolbar
+        if (toolbar) {
+          toolbar.remove();
+          toolbar = null;
+        }
+
+        // Remove selection change listener
+        document.removeEventListener("selectionchange", handleSelectionChange);
+
+        // Restore link hrefs and remove handlers
+        const currentLinks = previewDiv.querySelectorAll("a");
+        currentLinks.forEach((link) => {
+          const originalHref = link.getAttribute("data-original-href");
+          if (originalHref) {
+            link.href = originalHref;
+            link.removeAttribute("data-original-href");
+          }
+
+          link.classList.remove("hover:bg-blue-50");
+          link.style.cursor = "auto";
+
+          // Remove click handlers
+          const handler = linkClickHandlers.get(link);
+          if (handler) {
+            link.removeEventListener("click", handler);
+          }
+
+          // Add external link functionality
+          if (
+            !link.href.startsWith("/") &&
+            !link.href.includes(window.location.hostname)
+          ) {
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+          }
+        });
+
+        // Get the updated content
+        const updatedContent = previewDiv.innerHTML;
+
+        // Only update if content actually changed
+        if (updatedContent !== initialContent) {
+          console.log("Content changed, updating form state");
+          setFormData((prev) => ({
+            ...prev,
+            content: updatedContent,
+          }));
+        }
+
+        setIsEditing(false);
+
+        // Remove event listeners
+        previewDiv.removeEventListener("blur", handleBlur);
+        document.removeEventListener("keydown", handleKeyDown);
+      };
+
+      const handleBlur = (e: FocusEvent) => {
+        // Don't finish editing if clicking on toolbar or dialog
+        const target = e.relatedTarget as Element;
+        if (
+          target &&
+          (toolbar?.contains(target) || target.closest('[role="dialog"]'))
+        ) {
+          return;
+        }
+
+        // Small delay to allow clicking on buttons without losing focus
+        setTimeout(() => {
+          if (
+            !previewDiv.contains(document.activeElement) &&
+            (!toolbar || !toolbar.contains(document.activeElement as Node)) &&
+            !document.querySelector('[role="dialog"]')
+          ) {
+            finishEditing();
+          }
+        }, 200);
+      };
+
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          finishEditing();
+        }
+      };
+
+      // Add event listeners
+      previewDiv.addEventListener("blur", handleBlur);
+      document.addEventListener("keydown", handleKeyDown);
+    },
+    [isEditing, isAIGenerating, isAIEditing, addToast]
+  );
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleInputChange = (field: string, value: any) => {
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+    setError("");
+    setSuccess("");
+  };
+
+  // Detect content type from URL
+  const detectContentType = (url: string): "file" | "webpage" => {
+    // Check if it's a direct file URL
+    const fileExtensions = [
+      "jpg",
+      "jpeg",
+      "png",
+      "gif",
+      "bmp",
+      "webp",
+      "svg",
+      "pdf",
+      "doc",
+      "docx",
+      "txt",
+      "rtf",
+      "md",
+      "xls",
+      "xlsx",
+      "csv",
+      "ppt",
+      "pptx",
+    ];
+
+    const extension = url.split(".").pop()?.toLowerCase();
+    if (extension && fileExtensions.includes(extension)) {
+      return "file";
+    }
+
+    // Check if it's a Cosmic CDN URL or other direct file URLs
+    if (
+      url.includes("cdn.cosmicjs.com") ||
+      url.includes("/uploads/") ||
+      url.includes("/files/")
+    ) {
+      return "file";
+    }
+
+    // Otherwise, treat as webpage
+    return "webpage";
+  };
+
+  // Get appropriate icon for content type
+  const getContextIcon = (item: ContextItem) => {
+    if (item.type === "webpage") {
+      return <Globe className="h-4 w-4" />;
+    }
+
+    const extension = item.url.split(".").pop()?.toLowerCase();
+    if (!extension) return <File className="h-4 w-4" />;
+
+    const imageTypes = ["jpg", "jpeg", "png", "gif", "bmp", "webp", "svg"];
+    const documentTypes = ["pdf", "doc", "docx", "txt", "rtf", "md"];
+
+    if (imageTypes.includes(extension)) return <Image className="h-4 w-4" />;
+    if (documentTypes.includes(extension))
+      return <FileText className="h-4 w-4" />;
+    return <File className="h-4 w-4" />;
+  };
+
+  // Add context item
+  const addContextItem = (url: string, isEdit: boolean = false) => {
+    if (!url.trim()) return;
+
+    const newItem: ContextItem = {
+      id: Date.now().toString(),
+      url: url.trim(),
+      type: detectContentType(url.trim()),
+      status: "pending",
+    };
+
+    if (isEdit) {
+      setEditContextItems((prev) => [...prev, newItem]);
+      setEditContextUrl("");
+      setShowEditContextInput(false);
+    } else {
+      setContextItems((prev) => [...prev, newItem]);
+      setContextUrl("");
+      setShowContextInput(false);
+    }
+  };
+
+  // Remove context item
+  const removeContextItem = (id: string, isEdit: boolean = false) => {
+    if (isEdit) {
+      setEditContextItems((prev) => prev.filter((item) => item.id !== id));
+    } else {
+      setContextItems((prev) => prev.filter((item) => item.id !== id));
+    }
+  };
+
+  // Share context from generation to editing
+  const shareContextToEdit = () => {
+    setEditContextItems((prev) => [...prev, ...contextItems]);
+    addToast("Context items shared with editor", "success");
+  };
+
+  // Handle context URL input
+  const handleContextUrlKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    isEdit: boolean = false
+  ) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const url = isEdit ? editContextUrl : contextUrl;
+      addContextItem(url, isEdit);
+    } else if (e.key === "Escape") {
+      if (isEdit) {
+        setShowEditContextInput(false);
+        setEditContextUrl("");
+      } else {
+        setShowContextInput(false);
+        setContextUrl("");
+      }
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+    setIsLoading(true);
+    setIsSubmitting(true);
+
+    try {
+      const response = await fetch("/api/email-marketing/templates", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to create template");
+      }
+
+      addToast("Template created successfully!", "success");
+      scrollToTop();
+
+      // Navigate to templates page after a short delay and refresh data
+      setTimeout(() => {
+  router.push("/email/templates");
+        router.refresh(); // Ensure fresh data is fetched
+      }, 1500);
+    } catch (err: any) {
+      addToast(
+        err.message || "Failed to create template. Please try again.",
+        "error"
+      );
+      scrollToTop();
+      console.error("Template creation error:", err);
+    } finally {
+      setIsLoading(false);
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleAIGenerate = async () => {
+    if (!aiPrompt.trim()) {
+      addToast("Please enter a prompt for AI generation", "error");
+      return;
+    }
+
+    setIsAIGenerating(true);
+    setStreamingContent("");
+    setAiStatus("Starting generation...");
+    setAiProgress(0);
+
+    try {
+      const response = await fetch("/api/email-marketing/templates/generate-ai", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompt: aiPrompt,
+          type: formData.template_type,
+          context_items: contextItems.filter(
+            (item) => item.status === "ready" || item.status === "pending"
+          ),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to generate AI content");
+      }
+
+      if (!response.body) {
+        throw new Error("No response body");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let accumulatedContent = "";
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split("\n");
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              try {
+                const data = JSON.parse(line.slice(6));
+
+                if (data.type === "status") {
+                  setAiStatus(data.message);
+                  setAiProgress(data.progress || 0);
+                } else if (data.type === "content") {
+                  accumulatedContent += data.text;
+                  setStreamingContent(accumulatedContent);
+                  setFormData((prev) => ({
+                    ...prev,
+                    content: accumulatedContent,
+                  }));
+                } else if (data.type === "complete") {
+                  setFormData((prev) => ({
+                    ...prev,
+                    content: data.data.content, // Only set content, no subject
+                  }));
+                  setAiStatus("Generation complete!");
+                  setAiProgress(100);
+                  setHasGeneratedContent(true);
+
+                  // NEW: Automatically transition to edit mode
+                  setTimeout(() => {
+                    setShowEditPrompt(true);
+
+                    // Share context if preservation is enabled
+                    if (preserveContext && contextItems.length > 0) {
+                      setEditContextItems((prev) => [...prev, ...contextItems]);
+                    }
+
+                    // Clear generation prompt but keep context if preserving
+                    setAIPrompt("");
+                    if (!preserveContext) {
+                      setContextItems([]);
+                    }
+
+                    // Focus edit prompt
+                    setTimeout(() => {
+                      if (editPromptRef.current) {
+                        editPromptRef.current.focus();
+                      }
+                    }, 100);
+
+                    addToast(
+                      "Ready to edit! Add refinement instructions below.",
+                      "success"
+                    );
+                  }, 1500);
+
+                  // Auto-resize content textarea after update
+                  setTimeout(() => {
+                    if (contentRef.current) {
+                      autoResize(contentRef.current);
+                    }
+                  }, 100);
+                } else if (data.type === "error") {
+                  throw new Error(data.error);
+                }
+              } catch (parseError) {
+                console.warn("Failed to parse SSE data:", parseError);
+              }
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    } catch (error) {
+      console.error("AI generation error:", error);
+      addToast("Failed to generate AI content. Please try again.", "error");
+      setAiStatus("Generation failed");
+    } finally {
+      setIsAIGenerating(false);
+      setTimeout(() => {
+        setAiStatus("");
+        setAiProgress(0);
+      }, 2000);
+    }
+  };
+
+  const handleGenerateSubject = async () => {
+    if (!formData.content.trim()) {
+      addToast("Please generate or add email content first", "error");
+      return;
+    }
+
+    setIsGeneratingSubject(true);
+    try {
+      const response = await fetch("/api/email-marketing/templates/generate-subject", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          content: formData.content,
+          templateType: formData.template_type,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to generate subject line");
+      }
+
+      const result = await response.json();
+
+      if (result.success && result.subject) {
+        setFormData((prev) => ({
+          ...prev,
+          subject: result.subject,
+        }));
+        addToast(
+          result.fallback
+            ? "Subject generated (fallback)"
+            : "Subject generated successfully!",
+          "success"
+        );
+      } else {
+        throw new Error("No subject received");
+      }
+    } catch (error) {
+      console.error("Subject generation error:", error);
+      addToast("Failed to generate subject line. Please try again.", "error");
+    } finally {
+      setIsGeneratingSubject(false);
+    }
+  };
+
+  const handleAIEdit = async () => {
+    if (!editPrompt.trim()) {
+      addToast("Please enter instructions for AI editing", "error");
+      return;
+    }
+
+    if (!formData.content.trim()) {
+      addToast("Please generate or add content first before editing", "error");
+      return;
+    }
+
+    setIsAIEditing(true);
+    setStreamingContent("");
+    setAiStatus("Starting AI editing...");
+    setAiProgress(0);
+
+    try {
+      const response = await fetch("/api/email-marketing/templates/edit-ai", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompt: editPrompt,
+          currentContent: formData.content,
+          currentSubject: formData.subject,
+          templateId: "new",
+          context_items: editContextItems.filter(
+            (item) => item.status === "ready" || item.status === "pending"
+          ),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to edit content with AI");
+      }
+
+      if (!response.body) {
+        throw new Error("No response body");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let accumulatedContent = "";
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split("\n");
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              try {
+                const data = JSON.parse(line.slice(6));
+
+                if (data.type === "status") {
+                  setAiStatus(data.message);
+                  setAiProgress(data.progress || 0);
+                } else if (data.type === "content") {
+                  accumulatedContent += data.text;
+                  setStreamingContent(accumulatedContent);
+                  setFormData((prev) => ({
+                    ...prev,
+                    content: accumulatedContent,
+                  }));
+                } else if (data.type === "complete") {
+                  setFormData((prev) => ({
+                    ...prev,
+                    content: data.data.content,
+                    subject: data.data.subject || prev.subject,
+                  }));
+                  setEditPrompt("");
+                  setAiStatus("Editing complete!");
+                  setAiProgress(100);
+                  addToast(
+                    "Content edited successfully! Continue editing or save template.",
+                    "success"
+                  );
+
+                  // Auto-resize content textarea after update
+                  setTimeout(() => {
+                    if (contentRef.current) {
+                      autoResize(contentRef.current);
+                    }
+                  }, 100);
+                } else if (data.type === "error") {
+                  throw new Error(data.error);
+                }
+              } catch (parseError) {
+                console.warn("Failed to parse SSE data:", parseError);
+              }
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    } catch (error) {
+      console.error("AI editing error:", error);
+      addToast("Failed to edit content with AI. Please try again.", "error");
+      setAiStatus("Editing failed");
+    } finally {
+      setIsAIEditing(false);
+      setTimeout(() => {
+        setAiStatus("");
+        setAiProgress(0);
+      }, 2000);
+    }
+  };
+
+  // Auto-focus AI prompt when AI section is shown
+  const handleAISectionFocus = (ref: React.RefObject<HTMLTextAreaElement>) => {
+    setTimeout(() => {
+      if (ref.current) {
+        ref.current.focus();
+      }
+    }, 100);
+  };
+
+  // Reset to generation mode
+  const resetToGenerate = () => {
+    setShowEditPrompt(false);
+    setEditPrompt("");
+    setEditContextItems([]);
+    setHasGeneratedContent(false);
+    setFormData((prev) => ({ ...prev, content: "", subject: prev.subject }));
+    addToast("Reset to generation mode", "success");
+  };
+
+  // Handle cancel
+  const handleCancel = () => {
+    router.back();
+  };
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (contentSyncTimeoutRef.current) {
+        clearTimeout(contentSyncTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  return (
+    <>
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
+
+      <div className="space-y-6">
+        {/* Unsaved Changes Warning */}
+
+        {/* Error Messages */}
+        {error && (
+          <div className="flex items-center space-x-2 p-4 bg-red-50 border border-red-200 rounded-md">
+            <AlertCircle className="h-5 w-5 text-red-600" />
+            <p className="text-red-600">{error}</p>
+          </div>
+        )}
+
+        {/* Success Messages */}
+        {success && (
+          <div className="flex items-center space-x-2 p-4 bg-green-50 border border-green-200 rounded-md">
+            <CheckCircle className="h-5 w-5 text-green-600" />
+            <p className="text-green-600">{success}</p>
+          </div>
+        )}
+
+        {/* Template Details Section */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>Template Details</CardTitle>
+              <div className="flex space-x-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleCancel}
+                  disabled={isLoading}
+                  size="sm"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={
+                    isLoading ||
+                    !formData.name.trim() ||
+                    !formData.subject.trim() ||
+                    !formData.content.trim()
+                  }
+                  className="bg-slate-800 hover:bg-slate-900 text-white"
+                  size="sm"
+                >
+                  {isLoading ? "Creating..." : "Create Template"}
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Template Name */}
+            <div className="space-y-2">
+              <Label htmlFor="name">Template Name *</Label>
+              <Input
+                id="name"
+                type="text"
+                value={formData.name}
+                onChange={(e) => handleInputChange("name", e.target.value)}
+                placeholder="Enter template name"
+                disabled={isLoading}
+                required
+              />
+            </div>
+
+            {/* Template Type - Using exact select-dropdown values */}
+            <div className="space-y-2">
+              <Label>Template Type</Label>
+              <Select
+                value={formData.template_type}
+                onValueChange={(value) =>
+                  handleInputChange("template_type", value)
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Newsletter">Newsletter</SelectItem>
+                  <SelectItem value="Welcome Email">Welcome Email</SelectItem>
+                  <SelectItem value="Promotional">Promotional</SelectItem>
+                  <SelectItem value="Transactional">Transactional</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Subject Line with AI Generate Button */}
+            <div className="space-y-2">
+              <Label htmlFor="subject">Email Subject *</Label>
+              <div className="flex space-x-2">
+                <Input
+                  id="subject"
+                  type="text"
+                  value={formData.subject}
+                  onChange={(e) => handleInputChange("subject", e.target.value)}
+                  placeholder="Enter email subject line"
+                  disabled={isLoading}
+                  required
+                  className="flex-1"
+                />
+                <Button
+                  type="button"
+                  onClick={handleGenerateSubject}
+                  disabled={isGeneratingSubject || !formData.content.trim()}
+                  size="sm"
+                  className="bg-amber-600 hover:bg-amber-700 text-white px-3"
+                  title="Generate subject from email content"
+                >
+                  <Sparkles className="h-4 w-4" />
+                </Button>
+              </div>
+              {!formData.content.trim() && (
+                <p className="text-xs text-muted-foreground">
+                  Generate or add email content first to use AI subject
+                  generation
+                </p>
+              )}
+            </div>
+
+            {/* Active Toggle */}
+            <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
+              <div className="space-y-1">
+                <Label htmlFor="active" className="text-base font-medium">
+                  Active Template
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Active templates are available for creating campaigns
+                </p>
+              </div>
+              <Switch
+                id="active"
+                checked={formData.active}
+                onCheckedChange={(checked) =>
+                  handleInputChange("active", checked)
+                }
+                disabled={isLoading}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Template Content Section - 2 Column Layout */}
+        <Card>
+          <CardHeader className="pb-4">
+            <CardTitle>Template Content</CardTitle>
+          </CardHeader>
+          <CardContent className="px-6 pb-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Left Column: Generate/Edit Content with AI - 1/3 width */}
+              <div className="space-y-6 lg:col-span-1">
+                {!hasGeneratedContent ? (
+                  /* AI Generator Interface */
+                  <Card className="border border-border bg-accent/30">
+                    <CardHeader>
+                      <CardTitle className="flex items-center space-x-2 text-foreground">
+                        <Sparkles className="h-5 w-5" />
+                        <span>Generate Content with AI</span>
+                      </CardTitle>
+                      <p className="text-muted-foreground text-sm">
+                        Describe what you want to create with AI
+                      </p>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <Textarea
+                          ref={aiPromptRef}
+                          placeholder="e.g., 'Create a welcome email for new customers joining our fitness app'"
+                          value={aiPrompt}
+                          onChange={(e) => {
+                            setAIPrompt(e.target.value);
+                            autoResize(e.target);
+                          }}
+                          onKeyDown={(e) => handleKeyDown(e, "generate")}
+                          onFocus={() => handleAISectionFocus(aiPromptRef as unknown as React.RefObject<HTMLTextAreaElement>)}
+                          className="min-h-[100px] resize-none"
+                          disabled={isAIGenerating}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          💡 Tip: Press{" "}
+                          <kbd className="px-1.5 py-0.5 text-xs bg-muted rounded">
+                            Cmd+Enter
+                          </kbd>{" "}
+                          to generate
+                        </p>
+                      </div>
+
+                      {/* Context Items */}
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm font-medium text-foreground">
+                            Context (Optional)
+                          </Label>
+                          <div className="flex items-center space-x-2">
+                            <Button
+                              type="button"
+                              onClick={() => setShowContextInput(true)}
+                              disabled={isAIGenerating}
+                              size="sm"
+                              variant="outline"
+                              className="text-primary border-border hover:bg-accent"
+                            >
+                              <Plus className="h-4 w-4 mr-1" />
+                              Add Context
+                            </Button>
+                          </div>
+                        </div>
+
+                        {/* Context Input */}
+                        {showContextInput && (
+                          <div className="p-3 border border-border rounded-lg bg-card">
+                            <div className="flex space-x-2">
+                              <Input
+                                type="url"
+                                value={contextUrl}
+                                onChange={(e) => setContextUrl(e.target.value)}
+                                placeholder="Enter media URL or webpage link..."
+                                onKeyDown={(e) =>
+                                  handleContextUrlKeyDown(e, false)
+                                }
+                                className="flex-1"
+                                autoFocus
+                              />
+                              <Button
+                                type="button"
+                                onClick={() =>
+                                  addContextItem(contextUrl, false)
+                                }
+                                disabled={!contextUrl.trim()}
+                                size="sm"
+                                className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                              >
+                                Add
+                              </Button>
+                              <Button
+                                type="button"
+                                onClick={() => {
+                                  setShowContextInput(false);
+                                  setContextUrl("");
+                                }}
+                                size="sm"
+                                variant="outline"
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-2">
+                              📎 Add images, PDFs, documents, or web pages for
+                              AI to analyze
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Context Items List */}
+                        {contextItems.length > 0 && (
+                          <div className="space-y-2">
+                            {contextItems.map((item) => (
+                              <div
+                                key={item.id}
+                                className="flex items-center justify-between p-2 bg-card border border-border rounded-md"
+                              >
+                                <div className="flex items-center space-x-2 flex-1 min-w-0">
+                                  {getContextIcon(item)}
+                                  <span className="text-sm text-muted-foreground truncate">
+                                    {item.title ||
+                                      new URL(item.url).pathname
+                                        .split("/")
+                                        .pop() ||
+                                      item.url}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground capitalize">
+                                    ({item.type})
+                                  </span>
+                                </div>
+                                <Button
+                                  type="button"
+                                  onClick={() =>
+                                    removeContextItem(item.id, false)
+                                  }
+                                  disabled={isAIGenerating}
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-muted-foreground hover:text-red-600 p-1"
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* AI Status Display */}
+                      {isAIGenerating && aiStatus && (
+                        <AIProgressBar status={aiStatus} progress={aiProgress} />
+                      )}
+
+                      <Button
+                        onClick={handleAIGenerate}
+                        disabled={isAIGenerating || !aiPrompt.trim()}
+                        className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
+                      >
+                        {isAIGenerating ? (
+                          <>Generating with AI...</>
+                        ) : (
+                          <>
+                            <Sparkles className="mr-2 h-4 w-4" />
+                            Generate with AI
+                          </>
+                        )}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  /* AI Editor Interface */
+                  <Card className="border border-border bg-accent/30">
+                    <CardHeader>
+                      <CardTitle className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2 text-foreground">
+                          <Wand2 className="h-5 w-5" />
+                          <span>Edit Content with AI</span>
+                        </div>
+                        <Button
+                          type="button"
+                          onClick={resetToGenerate}
+                          size="sm"
+                          variant="outline"
+                          className="text-muted-foreground border-border hover:bg-accent"
+                        >
+                          <RefreshCw className="h-4 w-4 mr-2" />
+                          Regenerate
+                        </Button>
+                      </CardTitle>
+                      <p className="text-muted-foreground text-sm">
+                        How should we improve the current content?
+                      </p>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <Textarea
+                          ref={editPromptRef}
+                          placeholder="e.g., 'Add a call-to-action button', 'Change the tone to be more casual'"
+                          value={editPrompt}
+                          onChange={(e) => {
+                            setEditPrompt(e.target.value);
+                            autoResize(e.target);
+                          }}
+                          onKeyDown={(e) => handleKeyDown(e, "edit")}
+                          onFocus={() => handleAISectionFocus(editPromptRef as unknown as React.RefObject<HTMLTextAreaElement>)}
+                          className="min-h-[100px] resize-none"
+                          disabled={isAIEditing}
+                        />
+                        <p className="text-xs text-purple-600">
+                          💡 Tip: Press{" "}
+                            <kbd className="px-1.5 py-0.5 text-xs bg-muted rounded">
+                            Cmd+Enter
+                          </kbd>{" "}
+                          to edit
+                        </p>
+                      </div>
+
+                      {/* Edit Context Items */}
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm font-medium text-foreground">
+                            Context (Optional)
+                          </Label>
+                          <Button
+                            type="button"
+                            onClick={() => setShowEditContextInput(true)}
+                            disabled={isAIEditing}
+                            size="sm"
+                            variant="outline"
+                            className="text-primary border-border hover:bg-accent"
+                          >
+                            <Plus className="h-4 w-4 mr-1" />
+                            Add Context
+                          </Button>
+                        </div>
+
+                        {/* Edit Context Input */}
+                        {showEditContextInput && (
+                          <div className="p-3 border border-border rounded-lg bg-card">
+                            <div className="flex space-x-2">
+                              <Input
+                                type="url"
+                                value={editContextUrl}
+                                onChange={(e) =>
+                                  setEditContextUrl(e.target.value)
+                                }
+                                placeholder="Enter style reference, brand guide, or example URL..."
+                                onKeyDown={(e) =>
+                                  handleContextUrlKeyDown(e, true)
+                                }
+                                className="flex-1"
+                                autoFocus
+                              />
+                              <Button
+                                type="button"
+                                onClick={() =>
+                                  addContextItem(editContextUrl, true)
+                                }
+                                disabled={!editContextUrl.trim()}
+                                size="sm"
+                                className="bg-purple-600 hover:bg-purple-700"
+                              >
+                                Add
+                              </Button>
+                              <Button
+                                type="button"
+                                onClick={() => {
+                                  setShowEditContextInput(false);
+                                  setEditContextUrl("");
+                                }}
+                                size="sm"
+                                variant="outline"
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-2">
+                              📎 Add style guides, brand references, or examples
+                              for AI to follow
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Edit Context Items List */}
+                        {editContextItems.length > 0 && (
+                          <div className="space-y-2">
+                            {editContextItems.map((item) => (
+                              <div
+                                key={item.id}
+                                className="flex items-center justify-between p-2 bg-card border border-border rounded-md"
+                              >
+                                <div className="flex items-center space-x-2 flex-1 min-w-0">
+                                  {getContextIcon(item)}
+                                  <span className="text-sm text-foreground truncate">
+                                    {item.title ||
+                                      new URL(item.url).pathname
+                                        .split("/")
+                                        .pop() ||
+                                      item.url}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground capitalize">
+                                    ({item.type})
+                                  </span>
+                                </div>
+                                <Button
+                                  type="button"
+                                  onClick={() =>
+                                    removeContextItem(item.id, true)
+                                  }
+                                  disabled={isAIEditing}
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-muted-foreground hover:text-red-600 p-1"
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* AI Edit Status Display */}
+                      {isAIEditing && aiStatus && (
+                        <AIProgressBar status={aiStatus} progress={aiProgress} />
+                      )}
+
+                      <Button
+                        onClick={handleAIEdit}
+                        disabled={isAIEditing || !editPrompt.trim()}
+                        className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
+                      >
+                        {isAIEditing ? (
+                          <>Editing with AI...</>
+                        ) : (
+                          <>
+                            <Wand2 className="mr-2 h-4 w-4" />
+                            Edit with AI
+                          </>
+                        )}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+
+              {/* Right Column: Template Content with Toolbar - 2/3 width */}
+              <div className="space-y-4 lg:col-span-2">
+                <div className="bg-card border border-border rounded-lg shadow-sm overflow-hidden">
+                  <div className="bg-muted px-4 py-3 border-b border-border">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm text-muted-foreground">
+                        <strong>Subject:</strong>{" "}
+                        {formData.subject || "No subject"}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {formData.template_type}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Sticky formatting toolbar */}
+                  <div className="sticky top-0 bg-muted px-4 py-3 border-b border-border z-10">
+                    <HtmlEditingToolbar
+                      onFormatApply={handleFormatApply}
+                      className=""
+                      primaryColor={primaryColor}
+                    />
+                  </div>
+
+                  <div className="p-4 max-h-[70vh] overflow-y-auto">
+                    <div
+                      ref={previewRef}
+                      className={`prose max-w-none text-sm cursor-text min-h-[200px] outline-none ${
+                        isAIGenerating || isAIEditing
+                          ? "pointer-events-none select-none"
+                          : "pointer-events-auto select-text"
+                      }`}
+                      contentEditable={!isAIGenerating && !isAIEditing}
+                      onInput={(e) => {
+                        // Prevent recursive updates
+                        if (isUpdatingFromStateRef.current) {
+                          return;
+                        }
+
+                        // Save cursor position before any state changes
+                        saveCursorPosition();
+
+                        // Update content with debouncing to prevent race conditions
+                        const updatedContent = e.currentTarget.innerHTML;
+
+                        // Clear any existing timeout
+                        if (contentSyncTimeoutRef.current) {
+                          clearTimeout(contentSyncTimeoutRef.current);
+                        }
+
+                        // Set a timeout to batch rapid changes
+                        contentSyncTimeoutRef.current = setTimeout(() => {
+                          if (!isUpdatingFromStateRef.current) {
+                            setFormData((prev) => ({
+                              ...prev,
+                              content: updatedContent,
+                            }));
+                          }
+                        }, 100); // 100ms debounce
+                      }}
+                    />
+                    {/* Preview unsubscribe footer */}
+                    {formData.content && (
+                      <div className="mt-6 pt-3 border-t border-border text-center text-xs text-muted-foreground">
+                        <p>
+                          You received this email because you subscribed to our
+                          mailing list.
+                          <br />
+                          <span className="underline cursor-pointer">
+                            Unsubscribe
+                          </span>{" "}
+                          from future emails.
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          ↑ This unsubscribe link will be added automatically to
+                          all campaign emails
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="p-3 bg-accent border border-border rounded-lg">
+                  <div className="flex items-start space-x-2">
+                    <Info className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                    <div className="text-sm text-foreground">
+                      <p className="font-medium mb-1">✨ Enhanced Editing</p>
+                      <p className="text-xs">
+                        {isAIGenerating || isAIEditing ? (
+                          <span className="text-primary font-medium">
+                            AI is processing content...
+                          </span>
+                        ) : (
+                          <>
+                            Ready to edit! Type directly in the content area and
+                            select text to use the formatting toolbar.
+                          </>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Link Dialog */}
+      <LinkDialog
+        isOpen={showLinkDialog}
+        onClose={() => {
+          setShowLinkDialog(false);
+          setLinkDialogData({ url: "", text: "" });
+        }}
+        onSave={handleLinkSave}
+        onVisit={handleVisitLink}
+        initialUrl={linkDialogData.url}
+        initialText={linkDialogData.text}
+      />
+    </>
+  );
+}

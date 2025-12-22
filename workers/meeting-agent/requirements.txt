@@ -1,0 +1,7 @@
+livekit==0.17.2
+livekit-agents==0.9.3
+livekit-plugins-openai==0.7.0
+livekit-plugins-silero==0.6.3
+python-dotenv==1.0.0
+aiohttp==3.9.1
+pydantic==2.5.3
