@@ -132,6 +132,7 @@
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
     "resend": "^6.1.2",
+    "sharp": "^0.33.5",
     "sonner": "^1.7.1",
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
