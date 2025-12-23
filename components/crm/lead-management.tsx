@@ -366,6 +366,20 @@ export default function LeadManagement() {
   const allSelected = filteredLeads.length > 0 && selectedCountInFiltered === filteredLeads.length
   const isIndeterminate = selectedCountInFiltered > 0 && !allSelected
 
+  const handleToggleSelectAll = (checked: boolean | "indeterminate") => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (checked) {
+        // Select all leads in the current filtered view
+        filteredIds.forEach((id) => next.add(id))
+      } else {
+        // Clear selection only for the current filtered view
+        filteredIds.forEach((id) => next.delete(id))
+      }
+      return next
+    })
+  }
+
   const handleAddLead = async (lead: Omit<Lead, "id" | "createdAt">) => {
     // Persist to server so other modules (Dialer) see the same leads
     try {
