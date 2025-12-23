@@ -172,7 +172,6 @@ function capitalizeWords(s: string) {
 
 export default function LeadManagement() {
   const { toast } = useToast()
-  const allowFileFallback = process.env.NEXT_PUBLIC_CRM_ALLOW_FILE_FALLBACK === 'true'
   // Server-backed leads; start empty and hydrate from API
   const [leads, setLeads] = useState<Lead[]>([])
   const [filter, setFilter] = useState<string>("all")
@@ -185,7 +184,6 @@ export default function LeadManagement() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkStatus, setBulkStatus] = useState<string>("")
   const [serverLists, setServerLists] = useState<LeadList[]>([])
-  const [localLists, setLocalLists] = useState<LeadList[]>([])
   const [isCreateListOpen, setIsCreateListOpen] = useState(false)
   const [newListName, setNewListName] = useState("")
   const [isBulkOpen, setIsBulkOpen] = useState(false)
@@ -234,20 +232,10 @@ export default function LeadManagement() {
   useEffect(() => { 
     void refreshCustomStatuses()
     void refreshCustomSources()
-    // Also load local lists from localStorage as fallback
-    try {
-      const storedLists = JSON.parse(localStorage.getItem("crmLeadLists") || "[]")
-      if (Array.isArray(storedLists)) setLocalLists(storedLists)
-    } catch {}
   }, [])
-
-  useEffect(() => {
-    localStorage.setItem("crmLeadLists", JSON.stringify(localLists))
-  }, [localLists])
 
   // Hydrate from server on mount
   async function hydrateLeads() {
-    // Prefer DB-backed leads first; fall back to file-based leads only when explicitly allowed by env
     try {
       let res = await fetch(`/api/crm/leads?limit=500`, { cache: 'no-store' })
       if (!res.ok) {
@@ -259,19 +247,6 @@ export default function LeadManagement() {
       }
       let data = await res.json()
       let dbRows = (data.leads || []) as Array<any>
-      if (!Array.isArray(dbRows) || dbRows.length === 0) {
-        // If DB is empty and file fallback is allowed, attempt import once, then reload
-        if (allowFileFallback) {
-          try {
-            await fetch('/api/crm/leads/import', { method: 'POST' })
-          } catch {}
-          res = await fetch(`/api/crm/leads?limit=500`, { cache: 'no-store' })
-          if (res.ok) {
-            data = await res.json()
-            dbRows = (data.leads || []) as Array<any>
-          }
-        }
-      }
       if (Array.isArray(dbRows) && dbRows.length > 0) {
         const mappedDb: Lead[] = dbRows.map((r: any) => ({
           id: r.id,
@@ -295,44 +270,8 @@ export default function LeadManagement() {
       }
     } catch (e) {
       console.warn('DB fetch for CRM leads failed:', e)
-      if (!allowFileFallback) {
-        toast({ title: 'CRM error', description: 'Failed to load leads. Please try again.' })
-        return
-      }
-    }
-
-    // As a last resort, try file-based leads (useful in local/test environments). This can be expensive for large files.
-  if (!allowFileFallback) return
-    try {
-      let res = await fetch(`/api/crm/leads?limit=500&force=file`, { cache: 'no-store' })
-      if (!res.ok) {
-        console.warn('File fallback request not OK:', res.status)
-        return
-      }
-      let data = await res.json()
-      let rows = (data.leads || []) as Array<any>
-      if (Array.isArray(rows) && rows.length > 0) {
-        const mapped: Lead[] = rows.map((r: any) => ({
-          id: r.id,
-          dbId: r.id,
-          name: r.name,
-          email: r.email,
-          phone: r.phone || "",
-          company: r.company,
-          position: r.position || "",
-          status: r.status || "new",
-          value: Number(r.value || 0),
-          source: r.source || "Website",
-          notes: r.notes || "",
-          createdAt: r.created_at?.slice(0, 10) || new Date().toISOString().split("T")[0],
-          lastContact: r.last_contact || new Date().toISOString().split("T")[0],
-          documentId: r.document_id || '',
-          docAnswers: r.document_answers || undefined,
-        }))
-        setLeads(mapped)
-      }
-    } catch (e) {
-      console.warn('File fallback for CRM leads failed:', e)
+      toast({ title: 'CRM error', description: 'Failed to load leads. Please try again.' })
+      setLeads([])
     }
   }
 
@@ -396,8 +335,8 @@ export default function LeadManagement() {
     [allStatuses],
   )
 
-  // Optional list filter
-  const lists = useMemo(() => [...serverLists, ...localLists], [serverLists, localLists])
+  // Optional list filter (server-backed only)
+  const lists = useMemo(() => [...serverLists], [serverLists])
 
   const leadsAfterList = useMemo(() => {
     if (!activeListId) return leads
@@ -471,17 +410,11 @@ export default function LeadManagement() {
       setLeads((prev) => [newLead, ...prev])
     } catch (e) {
       console.error('Failed to create server lead:', e)
-      if (!allowFileFallback) {
-        toast({ title: 'Create lead failed', description: 'Unable to save lead to DB and file fallback is disabled. Please retry or contact ops.' })
-        return
-      }
-      console.warn('Adding lead locally due to server failure:', e)
-      const fallback: Lead = {
-        ...lead,
-        id: Date.now().toString(),
-        createdAt: new Date().toISOString().split('T')[0],
-      } as Lead
-      setLeads((prev) => [fallback, ...prev])
+      toast({
+        title: 'Create lead failed',
+        description: 'Unable to save lead to database. Please retry or contact support.',
+        variant: 'destructive',
+      })
     }
   }
 
@@ -507,7 +440,6 @@ export default function LeadManagement() {
     // Then update local state
     setLeads((prev) => prev.filter((lead) => lead.id !== id))
     // Remove from any lists
-    setLocalLists((prev) => prev.map((lst) => ({ ...lst, leadIds: lst.leadIds.filter((lid) => lid !== id) })))
     setServerLists((prev) => prev.map((lst) => ({ ...lst, leadIds: lst.leadIds.filter((lid) => lid !== id) })))
     setSelectedIds((prev) => {
       const next = new Set(prev)
@@ -515,44 +447,6 @@ export default function LeadManagement() {
       return next
     })
     toast({ description: 'Lead deleted successfully' })
-  }
-
-  const handleOpenEdit = (lead: Lead) => {
-    setEditingLead(lead)
-    setIsAddDialogOpen(true)
-  }
-
-  const handleCloseDialog = () => {
-    setIsAddDialogOpen(false)
-    setEditingLead(null)
-  }
-
-  const handleSelectChange = (id: string, checked: boolean) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (checked) next.add(id)
-      else next.delete(id)
-      return next
-    })
-  }
-
-  const handleToggleSelectAll = (checked: boolean | "indeterminate") => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (checked) {
-        // Add all filtered ids
-        for (const id of filteredIds) next.add(id)
-      } else {
-        // Remove all filtered ids
-        for (const id of filteredIds) next.delete(id)
-      }
-      return next
-    })
-  }
-
-  const handleBulkApplyStatus = () => {
-    if (!bulkStatus) return
-    setLeads((prev) => prev.map((l) => (selectedIds.has(l.id) ? { ...l, status: bulkStatus } : l)))
   }
 
   const handleBulkDelete = async () => {
@@ -574,7 +468,6 @@ export default function LeadManagement() {
     // Then update local state
     const toDeleteSet = new Set(toDelete)
     setLeads((prev) => prev.filter((l) => !toDeleteSet.has(l.id)))
-    setLocalLists((prev) => prev.map((lst) => ({ ...lst, leadIds: lst.leadIds.filter((lid) => !toDeleteSet.has(lid)) })))
     setServerLists((prev) => prev.map((lst) => ({ ...lst, leadIds: lst.leadIds.filter((lid) => !toDeleteSet.has(lid)) })))
     setSelectedIds(new Set())
     toast({ description: `Deleted ${toDelete.length} leads successfully` })
@@ -666,61 +559,60 @@ export default function LeadManagement() {
   const createListFromSelection = async (name: string) => {
     const ids = Array.from(selectedIds)
     if (!name.trim() || ids.length === 0) return
-    // If all selected leads have server IDs, try creating a server list
+    // Require that all selected leads have persisted IDs
     const selected = leads.filter((l) => selectedIds.has(l.id))
     const allHaveDb = selected.every((l) => l.dbId)
-    if (allHaveDb) {
-      try {
-        const res = await fetch("/api/crm/lists", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: name.trim(), leadIds: selected.map((l) => l.dbId) }),
-        })
-        if (res.ok) {
-          const data = await res.json()
-          await fetchServerLists()
-          setActiveListId(data.list?.id || null)
-          setIsCreateListOpen(false)
-          setNewListName("")
-          toast({ description: `List "${name}" created.` })
-          return
-        }
-      } catch (e) {
-        console.warn("Create server list failed, falling back to local:", e)
+    if (!allHaveDb) {
+      toast({
+        title: 'Cannot create list',
+        description: 'All selected leads must be saved to the database before creating a list.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    try {
+      const res = await fetch("/api/crm/lists", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim(), leadIds: selected.map((l) => l.dbId) }),
+      })
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`)
       }
+      const data = await res.json()
+      await fetchServerLists()
+      setActiveListId(data.list?.id || null)
+      setIsCreateListOpen(false)
+      setNewListName("")
+      toast({ description: `List "${name}" created.` })
+    } catch (e) {
+      console.error('Failed to create list:', e)
+      toast({
+        title: 'Create list failed',
+        description: 'Unable to save list to database. Please retry or contact support.',
+        variant: 'destructive',
+      })
     }
-    // Local fallback
-    const newList: LeadList = {
-      id: `${Date.now()}`,
-      name: name.trim(),
-      createdAt: new Date().toISOString(),
-      leadIds: ids,
-    }
-    setLocalLists((prev) => [newList, ...prev])
-    setIsCreateListOpen(false)
-    setNewListName("")
-    toast({ description: `Local list "${name}" created.` })
   }
 
   const deleteList = async (id: string) => {
-    // Try server delete first
-    const isServer = serverLists.some((l) => l.id === id)
-    if (isServer) {
-      try {
-        const res = await fetch(`/api/crm/lists?id=${encodeURIComponent(id)}`, { method: "DELETE" })
-        if (res.ok) {
-          await fetchServerLists()
-          if (activeListId === id) setActiveListId(null)
-          toast({ description: "List deleted." })
-          return
-        }
-      } catch (e) {
-        console.warn("Server list delete failed, attempting local:", e)
+    try {
+      const res = await fetch(`/api/crm/lists?id=${encodeURIComponent(id)}`, { method: "DELETE" })
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`)
       }
+      await fetchServerLists()
+      if (activeListId === id) setActiveListId(null)
+      toast({ description: "List deleted." })
+    } catch (e) {
+      console.error('Failed to delete list:', e)
+      toast({
+        title: 'Delete list failed',
+        description: 'Unable to delete list from database. Please retry or contact support.',
+        variant: 'destructive',
+      })
     }
-    setLocalLists((prev) => prev.filter((l) => l.id !== id))
-    if (activeListId === id) setActiveListId(null)
-    toast({ description: "Local list deleted." })
   }
 
   return (
@@ -1226,8 +1118,7 @@ export default function LeadManagement() {
           open={isBulkOpen}
           onOpenChangeAction={setIsBulkOpen}
           onImportAction={(items: BulkLead[], listName?: string) => {
-            // Try server-backed import first; fallback to local-only on failure
-            const tryServer = async () => {
+            void (async () => {
               try {
                 const res = await fetch("/api/crm/bulk-upload", {
                   method: "POST",
@@ -1258,44 +1149,14 @@ export default function LeadManagement() {
                   setActiveListId(data.list.id)
                 }
                 toast({ description: `Imported ${created.length} leads${listName ? ` and created list "${listName}"` : ""}.` })
-                return true
               } catch (e) {
-                console.warn("Bulk upload API failed, falling back to local only:", e)
-                return false
+                console.error('Bulk upload failed:', e)
+                toast({
+                  title: 'Bulk upload failed',
+                  description: 'Unable to import leads into the database. Please retry or contact support.',
+                  variant: 'destructive',
+                })
               }
-            }
-
-            void (async () => {
-              const ok = await tryServer()
-              if (ok) return
-              // Local fallback
-              const created: Lead[] = items.map((it: BulkLead, idx: number) => ({
-                id: `${Date.now()}-${idx}`,
-                name: it.name,
-                email: it.email,
-                phone: it.phone || "",
-                company: it.company,
-                position: it.position || "",
-                status: (it.status || "new") as string,
-                value: Number(it.value || 0),
-                source: it.source || "Website",
-                notes: it.notes || "",
-                createdAt: new Date().toISOString().split("T")[0],
-                lastContact: it.lastContact || new Date().toISOString().split("T")[0],
-              }))
-              setLeads((prev) => [...created, ...prev])
-              if (listName) {
-                const ids = created.map((c) => c.id)
-                const newList: LeadList = {
-                  id: `${Date.now()}-bulk`,
-                  name: listName,
-                  createdAt: new Date().toISOString(),
-                  leadIds: ids,
-                }
-                setLocalLists((prev) => [newList, ...prev])
-                setActiveListId(newList.id)
-              }
-              toast({ description: `Imported ${created.length} leads locally${listName ? ` and created list "${listName}"` : ""}.` })
             })()
           }}
         />
