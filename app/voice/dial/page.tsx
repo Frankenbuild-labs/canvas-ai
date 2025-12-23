@@ -6,7 +6,7 @@ declare namespace JSX {
     'call-widget': any
   }
 }
-import { Suspense, useEffect, useMemo, useRef, useState } from "react"
+import { Suspense, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useSearchParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -132,7 +132,7 @@ function DialPageInner() {
   const [historyFilter, setHistoryFilter] = useState<string>('all') // all, answered, voicemail, interested, etc.
 
   // Call Widget state
-  const buttonId = useMemo(() => `dialerBtn-${Math.random().toString(36).slice(2,8)}`,[ ])
+  const buttonId = 'dialerBtn-main'
   const [token, setToken] = useState<string>("")
   const [host, setHost] = useState<string>("")
   const widgetRef = useRef<any>(null)

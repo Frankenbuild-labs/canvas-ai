@@ -10,6 +10,8 @@ export async function GET(_req: NextRequest) {
     const calls = await listRecentCalls(userId, 20)
     return NextResponse.json({ ok: true, calls })
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || 'error' }, { status: 500 })
+    console.error('Error fetching recent calls:', e)
+    // Don't break the dialer UI if auth or tables are not fully configured yet
+    return NextResponse.json({ ok: true, calls: [], error: e?.message || 'error' }, { status: 200 })
   }
 }

@@ -18,9 +18,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ calls })
   } catch (error) {
     console.error('Error fetching call history:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch call history' },
-      { status: 500 }
-    )
+    // Fail soft for UI: return empty history/followups instead of 500
+    return NextResponse.json({ calls: [], followUps: [], error: 'Failed to fetch call history' })
   }
 }

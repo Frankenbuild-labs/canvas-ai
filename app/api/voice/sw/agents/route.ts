@@ -24,7 +24,13 @@ export async function GET(_req: NextRequest) {
     try {
       agents = await safeSql("SELECT * FROM signalwire_agents WHERE user_id = $1 ORDER BY created_at DESC", [userId])
     } catch (dbErr: any) {
-      return Response.json({ ok: false, error: 'Agent list query failed', detail: dbErr?.message || String(dbErr) }, { status: 500 })
+      const msg = dbErr?.message || String(dbErr)
+      console.error('Agent list query failed:', msg)
+      // If the table doesn't exist yet or schema isn't ready, fail soft with empty list
+      if (/relation\s+"?signalwire_agents"?\s+does not exist/i.test(msg)) {
+        return Response.json({ ok: true, agents: [], warning: msg })
+      }
+      return Response.json({ ok: false, error: 'Agent list query failed', detail: msg }, { status: 500 })
     }
     return Response.json({ ok: true, agents })
   } catch (e: any) {
