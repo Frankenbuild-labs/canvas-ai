@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { DatabaseService } from '@/lib/database'
 import { listCustomStatuses, addCustomStatus, removeCustomStatus } from '@/lib/crm-supabase'
+import { getUserIdFromRequest } from '@/lib/auth-next'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const userId = await DatabaseService.getOrCreateTestUser()
+    const userId = await getUserIdFromRequest(req as any)
     const statuses = await listCustomStatuses(userId)
     return NextResponse.json({ statuses })
   } catch (e: any) {
@@ -15,7 +15,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const userId = await DatabaseService.getOrCreateTestUser()
+    const userId = await getUserIdFromRequest(req as any)
     const { status } = await req.json()
     if (!status || typeof status !== 'string') {
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const userId = await DatabaseService.getOrCreateTestUser()
+    const userId = await getUserIdFromRequest(req as any)
     const { searchParams } = new URL(req.url)
     const status = searchParams.get('status')
     if (!status) {

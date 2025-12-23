@@ -1,19 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { listCallHistoryWithDispositions, listFollowUps } from '@/lib/voice/calls-db'
+import { getUserIdFromRequest } from '@/lib/auth-next'
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
-    const userId = searchParams.get('userId')
+    const userId = await getUserIdFromRequest(req as any)
     const type = searchParams.get('type') || 'history' // 'history' or 'followups'
     const limit = parseInt(searchParams.get('limit') || '50')
-
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'Missing userId parameter' },
-        { status: 400 }
-      )
-    }
 
     if (type === 'followups') {
       const followUps = await listFollowUps(userId, 7)

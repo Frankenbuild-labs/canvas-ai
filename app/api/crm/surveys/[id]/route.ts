@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { DatabaseService } from '@/lib/database'
 import { updateSurvey, deleteSurvey } from '@/lib/crm-supabase'
+import { getUserIdFromRequest } from '@/lib/auth-next'
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const userId = await DatabaseService.getOrCreateTestUser()
+    const userId = await getUserIdFromRequest(req as any)
     const id = params.id
     const body = await req.json()
     const patch: any = {}
@@ -22,7 +22,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const userId = await DatabaseService.getOrCreateTestUser()
+    const userId = await getUserIdFromRequest(_req as any)
     const id = params.id
     await deleteSurvey(userId, id)
     return NextResponse.json({ ok: true })

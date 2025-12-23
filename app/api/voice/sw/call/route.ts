@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { getCompatBase, getAuthHeader, requireConfigured } from "@/lib/voice/signalwire"
-import { DatabaseService } from "@/lib/database"
 import { createCallLog } from "@/lib/voice/calls-db"
+import { getUserIdFromRequest } from "@/lib/auth-next"
 
 function normalizeE164(num: string, defaultCountry: 'US' = 'US') {
   const s = String(num || '').trim()
@@ -15,7 +15,7 @@ function normalizeE164(num: string, defaultCountry: 'US' = 'US') {
   return s
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     requireConfigured()
     const body = await req.json()
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
     const answerUrl = `${baseUrl}/api/voice/sw/answer?contact=${encodeURIComponent(to)}`
 
     const url = `${getCompatBase()}/Calls.json`
-    const userId = await DatabaseService.getOrCreateTestUser()
+    const userId = await getUserIdFromRequest(req as any)
     const statusCallback = `${baseUrl}/api/voice/sw/call/status`
 
     const payload = new URLSearchParams({

@@ -1,10 +1,10 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { insertLeads, createList } from "@/lib/crm-supabase"
-import { DatabaseService } from "@/lib/database"
+import { getUserIdFromRequest } from "@/lib/auth-next"
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const userId = await DatabaseService.getOrCreateTestUser()
+    const userId = await getUserIdFromRequest(req as any)
     const { items, listName } = await req.json()
     if (!Array.isArray(items)) {
       return NextResponse.json({ error: "Invalid items" }, { status: 400 })

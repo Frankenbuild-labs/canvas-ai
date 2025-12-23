@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import path from "path"
 import { writeFile } from "fs/promises"
 import { randomUUID } from "crypto"
-import { getDiaProvider } from "@lib/tts/providers/dia"
+import { getPlaydiffusionProvider } from "@lib/tts/providers/playdiffusion"
 
 export const runtime = 'nodejs'
 
@@ -136,7 +136,7 @@ export async function POST(request: NextRequest) {
       let resolvedVoiceName: string = paragraph.voice_name || paragraph.voice_id || "Unknown"
 
       const outFormat = (paragraph.output_format === "wav" || paragraph.output_format === "opus") ? paragraph.output_format : "wav"
-      const provider = getDiaProvider()
+      const provider = getPlaydiffusionProvider()
       let gen
       try {
         gen = await provider.generate({
@@ -185,7 +185,7 @@ export async function POST(request: NextRequest) {
             quality: paragraph.quality,
             temperature: paragraph.temperature,
             emotion: paragraph.emotion,
-            engine: "dia-tts",
+            engine: "playdiffusion-tts",
           }),
           characterCount,
           projectId,

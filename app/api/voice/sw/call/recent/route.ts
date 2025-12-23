@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { DatabaseService } from '@/lib/database'
 import { listRecentCalls } from '@/lib/voice/calls-db'
+import { getUserIdFromRequest } from '@/lib/auth-next'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(_req: NextRequest) {
   try {
-    const userId = await DatabaseService.getOrCreateTestUser()
+    const userId = await getUserIdFromRequest(_req as any)
     const calls = await listRecentCalls(userId, 20)
     return NextResponse.json({ ok: true, calls })
   } catch (e: any) {

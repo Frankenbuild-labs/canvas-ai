@@ -1,17 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { addCallDisposition, getCallDisposition } from '@/lib/voice/calls-db'
+import { getUserIdFromRequest } from '@/lib/auth-next'
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { callLogId, dispositionType, notes, nextAction, followUpDate, userId } = body
+    const { callLogId, dispositionType, notes, nextAction, followUpDate } = body
 
-    if (!callLogId || !dispositionType || !userId) {
+    if (!callLogId || !dispositionType) {
       return NextResponse.json(
-        { error: 'Missing required fields: callLogId, dispositionType, userId' },
+        { error: 'Missing required fields: callLogId, dispositionType' },
         { status: 400 }
       )
     }
+
+    const userId = await getUserIdFromRequest(req as any)
 
     const disposition = await addCallDisposition(callLogId, {
       dispositionType,

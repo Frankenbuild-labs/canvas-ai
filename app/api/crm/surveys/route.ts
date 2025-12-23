@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { DatabaseService } from '@/lib/database'
 import { listSurveys, createSurvey } from '@/lib/crm-supabase'
+import { getUserIdFromRequest } from '@/lib/auth-next'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const userId = await DatabaseService.getOrCreateTestUser()
+    const userId = await getUserIdFromRequest(req as any)
     const surveys = await listSurveys(userId)
     return NextResponse.json({ surveys })
   } catch (e: any) {
@@ -15,7 +15,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const userId = await DatabaseService.getOrCreateTestUser()
+    const userId = await getUserIdFromRequest(req as any)
     const body = await req.json()
     const name = String(body.name || '').trim()
     const description = body.description ? String(body.description) : null

@@ -227,7 +227,6 @@ function DialPageInner() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  userId: 'user-123', // TODO: Get from auth
                   leadId: selectedContact?.id || null,
                   contactNumber: callNumber,
                   fromNumber: fromNum,
@@ -577,15 +576,9 @@ function DialPageInner() {
         if (selectedList) url.searchParams.set('list_id', selectedList)
         if (search) url.searchParams.set('search', search)
         url.searchParams.set('limit', '50')
-        let res = await fetch(url.toString(), { cache: 'no-store' })
-        let json = await res.json()
-        let rows = json?.leads || []
-        if (!Array.isArray(rows) || rows.length === 0) {
-          url.searchParams.set('force', 'file')
-          res = await fetch(url.toString(), { cache: 'no-store' })
-          json = await res.json()
-          rows = json?.leads || []
-        }
+        const res = await fetch(url.toString(), { cache: 'no-store' })
+        const json = await res.json()
+        const rows = json?.leads || []
         const mapped: Contact[] = rows.map((r: any) => ({ id: r.id, name: r.name || r.email, phone: r.phone || '' }))
         setContacts(mapped)
         // Default select the first contact if none selected
@@ -604,7 +597,7 @@ function DialPageInner() {
   // Fetch call history with dispositions
   const fetchCallHistory = async () => {
     try {
-      const response = await fetch('/api/voice/history?userId=user-123&limit=100') // TODO: Get userId from auth
+      const response = await fetch('/api/voice/history?limit=100')
       if (!response.ok) {
         console.warn('Call history API not available yet (tables may not exist)')
         return
@@ -637,7 +630,6 @@ function DialPageInner() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           callLogId: lastCallLogId,
-          userId: 'user-123', // TODO: Get from auth
           ...disposition
         })
       })

@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 // Prevent Next from attempting to statically prerender this route at build time
 export const dynamic = 'force-dynamic'
-import { DatabaseService } from '@/lib/database'
 import { listLeads, insertLeads, updateLead } from '@/lib/crm-supabase'
 import sql from '@/lib/database'
+import { getUserIdFromRequest } from '@/lib/auth-next'
 
 export async function GET(request: NextRequest) {
   try {
-    const userId = await DatabaseService.getOrCreateTestUser()
+    const userId = await getUserIdFromRequest(request as any)
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search') || undefined
     const list_id = searchParams.get('list_id') || undefined
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const userId = await DatabaseService.getOrCreateTestUser()
+    const userId = await getUserIdFromRequest(request as any)
     const body = await request.json()
     console.log('[CRM POST] Received body:', JSON.stringify(body, null, 2))
     const item = {
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const userId = await DatabaseService.getOrCreateTestUser()
+    const userId = await getUserIdFromRequest(request as any)
     const body = await request.json()
     const id = String(body.id || '')
     if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
@@ -84,7 +84,7 @@ export async function PATCH(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const userId = await DatabaseService.getOrCreateTestUser()
+    const userId = await getUserIdFromRequest(request as any)
     const { searchParams } = new URL(request.url)
     
     // Special operation: fix all contact user_ids

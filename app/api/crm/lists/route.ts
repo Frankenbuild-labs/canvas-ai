@@ -1,10 +1,10 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { createList, deleteList, listListsWithMembers } from "@/lib/crm-supabase"
-import { DatabaseService } from "@/lib/database"
+import { getUserIdFromRequest } from "@/lib/auth-next"
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const userId = await DatabaseService.getOrCreateTestUser()
+    const userId = await getUserIdFromRequest(req as any)
     const lists = await listListsWithMembers(userId)
     return NextResponse.json({ lists })
   } catch (e: any) {
@@ -13,9 +13,9 @@ export async function GET() {
   }
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const userId = await DatabaseService.getOrCreateTestUser()
+    const userId = await getUserIdFromRequest(req as any)
     const { name, leadIds } = await req.json()
     if (!name || !Array.isArray(leadIds)) {
       return NextResponse.json({ error: "Invalid body" }, { status: 400 })
@@ -28,9 +28,9 @@ export async function POST(req: Request) {
   }
 }
 
-export async function DELETE(req: Request) {
+export async function DELETE(req: NextRequest) {
   try {
-    const userId = await DatabaseService.getOrCreateTestUser()
+    const userId = await getUserIdFromRequest(req as any)
     const { searchParams } = new URL(req.url)
     const id = searchParams.get("id")
     if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 })
