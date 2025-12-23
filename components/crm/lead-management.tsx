@@ -441,6 +441,18 @@ export default function LeadManagement() {
     setLeads((prev) => prev.map((lead) => (lead.id === updatedLead.id ? updatedLead : lead)))
   }
 
+  const handleSelectChange = (id: string, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (checked) {
+        next.add(id)
+      } else {
+        next.delete(id)
+      }
+      return next
+    })
+  }
+
   const handleDeleteLead = async (id: string) => {
     // Delete from server first
     try {
