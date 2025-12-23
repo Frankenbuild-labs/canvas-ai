@@ -480,6 +480,44 @@ export default function LeadManagement() {
     toast({ description: 'Lead deleted successfully' })
   }
 
+  const handleBulkApplyStatus = async () => {
+    if (!bulkStatus) return
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+
+    try {
+      const requests = ids.map((id) =>
+        fetch('/api/crm/leads', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, status: bulkStatus }),
+        })
+      )
+      const responses = await Promise.all(requests)
+      const failed = responses.filter((res) => !res.ok)
+
+      if (failed.length > 0) {
+        console.error('Failed to apply bulk status to some leads')
+        toast({
+          title: 'Update failed',
+          description: 'Some leads could not be updated',
+          variant: 'destructive',
+        })
+      } else {
+        toast({ description: `Updated status for ${ids.length} leads` })
+      }
+    } catch (e) {
+      console.error('Bulk status update failed:', e)
+      toast({
+        title: 'Update failed',
+        description: 'Failed to update lead statuses',
+        variant: 'destructive',
+      })
+    } finally {
+      void hydrateLeads()
+    }
+  }
+
   const handleBulkDelete = async () => {
     const toDelete = Array.from(selectedIds)
     if (toDelete.length === 0) return
