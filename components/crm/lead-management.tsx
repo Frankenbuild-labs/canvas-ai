@@ -199,6 +199,11 @@ export default function LeadManagement() {
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false)
   const [activeDocLeadId, setActiveDocLeadId] = useState<string | null>(null)
 
+  const handleCloseDialog = () => {
+    setIsAddDialogOpen(false)
+    setEditingLead(null)
+  }
+
   async function refreshSurveys() {
     try {
       const res = await fetch('/api/crm/surveys', { cache: 'no-store' })
