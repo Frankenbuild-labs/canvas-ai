@@ -13,12 +13,15 @@ export async function POST(req: Request) {
     // Normalize incoming items from BulkUploadDialog into the DB lead shape
     const normalized = (items as any[])
       .map((raw) => {
-        const name = String(raw.name || "").trim()
+        const rawName = String(raw.name || "").trim()
         const email = String(raw.email || "").trim()
-        const company = String(raw.company || "").trim()
-        if (!name || !email || !company) {
+        const rawCompany = String(raw.company || "").trim()
+        // Require at least an email; fall back name/company if missing
+        if (!email) {
           return null
         }
+        const name = rawName || email
+        const company = rawCompany || "Unknown Company"
         const valueRaw = raw.value
         const value =
           valueRaw === undefined || valueRaw === null || valueRaw === ""
