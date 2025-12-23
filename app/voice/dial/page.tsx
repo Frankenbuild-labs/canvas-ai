@@ -767,7 +767,7 @@ function DialPageInner() {
                 </div>
               )}
               <p className="text-xs text-muted-foreground">Selected From Number is used for SMS threads. The widget handles calling directly.</p>
-              {!callerIdReady && (
+              {!fromNumber && (
                 <div className="text-xs text-amber-600">
                   Select or purchase a verified caller ID before placing calls.
                 </div>
