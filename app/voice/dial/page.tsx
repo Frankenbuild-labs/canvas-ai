@@ -139,8 +139,7 @@ function DialPageInner() {
   // Use an any-typed alias to the custom element to avoid TS JSX typing issues
   const CallWidget: any = 'call-widget'
   const widgetReady = Boolean(token && host)
-  const callerIdReady = useMemo(() => Boolean(normalizeToE164(fromNumber || '')), [fromNumber])
-  const dialerEnabled = widgetReady && callerIdReady
+  const dialerEnabled = widgetReady
 
   useEffect(() => {
     // Load the Call Widget via CDN to register the <call-widget> element
