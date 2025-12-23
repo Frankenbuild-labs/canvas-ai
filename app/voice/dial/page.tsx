@@ -579,7 +579,12 @@ function DialPageInner() {
         const res = await fetch(url.toString(), { cache: 'no-store' })
         const json = await res.json()
         const rows = json?.leads || []
-        const mapped: Contact[] = rows.map((r: any) => ({ id: r.id, name: r.name || r.email, phone: r.phone || '' }))
+        const mapped: Contact[] = rows.map((r: any) => ({
+          id: r.id,
+          name: r.name || r.email,
+          phone: r.phone || '',
+          email: r.email || '',
+        }))
         setContacts(mapped)
         // Default select the first contact if none selected
         if (!selectedContactId && mapped.length > 0) {
@@ -846,6 +851,9 @@ function DialPageInner() {
                     <div className="min-w-0">
                       <div className="font-medium truncate">{c.name}</div>
                       <div className="text-sm text-muted-foreground truncate">{c.phone || 'No phone on file'}</div>
+                      {c.email && (
+                        <div className="text-xs text-muted-foreground truncate">{c.email}</div>
+                      )}
                     </div>
                     <Button
                       size="sm"
