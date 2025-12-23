@@ -494,6 +494,11 @@ export default function LeadManagement() {
 
   const handleClearSelection = () => setSelectedIds(new Set())
 
+  const handleOpenEdit = (lead: Lead) => {
+    setEditingLead(lead)
+    setIsAddDialogOpen(true)
+  }
+
   const handleAddCustomStatus = async (s: string) => {
     const value = s.trim()
     if (!value) return
