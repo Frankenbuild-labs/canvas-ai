@@ -6,9 +6,45 @@ export async function POST(req: Request) {
   try {
     const userId = await DatabaseService.getOrCreateTestUser()
     const { items, listName } = await req.json()
-    if (!Array.isArray(items)) return NextResponse.json({ error: "Invalid items" }, { status: 400 })
+    if (!Array.isArray(items)) {
+      return NextResponse.json({ error: "Invalid items" }, { status: 400 })
+    }
 
-    const created = await insertLeads(userId, items)
+    // Normalize incoming items from BulkUploadDialog into the DB lead shape
+    const normalized = (items as any[])
+      .map((raw) => {
+        const name = String(raw.name || "").trim()
+        const email = String(raw.email || "").trim()
+        const company = String(raw.company || "").trim()
+        if (!name || !email || !company) {
+          return null
+        }
+        const valueRaw = raw.value
+        const value =
+          valueRaw === undefined || valueRaw === null || valueRaw === ""
+            ? 0
+            : Number(valueRaw)
+
+        return {
+          name,
+          email,
+          phone: raw.phone ? String(raw.phone) : undefined,
+          company,
+          position: raw.position ? String(raw.position) : undefined,
+          status: String(raw.status || "new"),
+          value: isNaN(value) ? 0 : value,
+          source: raw.source ? String(raw.source) : "CSV Import",
+          notes: raw.notes ? String(raw.notes) : undefined,
+          last_contact: raw.lastContact ? String(raw.lastContact) : undefined,
+        }
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null)
+
+    if (normalized.length === 0) {
+      return NextResponse.json({ error: "No valid leads found in upload" }, { status: 400 })
+    }
+
+    const created = await insertLeads(userId, normalized as any)
     let list: { id: string; name: string } | undefined
     if (listName) {
       const lst = await createList(userId, String(listName), created.map((c) => c.id))
