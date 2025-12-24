@@ -692,10 +692,15 @@ function DialPageInner() {
                 id={buttonId}
                 size="sm"
                 className="bg-teal-600 hover:bg-teal-700 text-white disabled:bg-gray-400"
-                onClick={() => setIsDialerOpen(prev => !prev)}
+                onClick={() => {
+                  setIsDialerOpen(prev => !prev)
+                  if (widgetRef.current && (widgetRef.current as any).setAttribute) {
+                    ;(widgetRef.current as any).setAttribute('destination', '')
+                  }
+                }}
                 disabled={!dialerEnabled}
               >
-                Open Dialer
+                Open Dial Pad
               </Button>
             </div>
             {tokenError ? (
@@ -875,7 +880,7 @@ function DialPageInner() {
                         }
                       }}
                       disabled={!dialerEnabled}
-                    >Open Dialer</Button>
+                    >Click to Dial</Button>
                   </div>
                 ))}
               </div>
