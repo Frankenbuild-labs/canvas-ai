@@ -140,6 +140,7 @@ function DialPageInner() {
   const CallWidget: any = 'call-widget'
   const widgetReady = Boolean(token && host)
   const dialerEnabled = widgetReady
+  const [isDialerOpen, setIsDialerOpen] = useState(false)
 
   useEffect(() => {
     // Load the Call Widget via CDN to register the <call-widget> element
@@ -691,6 +692,7 @@ function DialPageInner() {
                 id={buttonId}
                 size="sm"
                 className="bg-teal-600 hover:bg-teal-700 text-white disabled:bg-gray-400"
+                onClick={() => setIsDialerOpen(prev => !prev)}
                 disabled={!dialerEnabled}
               >
                 Open Dialer
@@ -868,7 +870,9 @@ function DialPageInner() {
                         if (widgetRef.current && (widgetRef.current as any).setAttribute && fromNumber) {
                           ;(widgetRef.current as any).setAttribute('from', normalizeToE164(fromNumber))
                         }
-                        document.getElementById(buttonId)?.dispatchEvent(new Event('click', { bubbles: true }))
+                        if (!isDialerOpen) {
+                          document.getElementById(buttonId)?.dispatchEvent(new Event('click', { bubbles: true }))
+                        }
                       }}
                       disabled={!dialerEnabled}
                     >Open Dialer</Button>
@@ -907,7 +911,9 @@ function DialPageInner() {
                           if (widgetRef.current && (widgetRef.current as any).setAttribute && fromNumber) {
                             ;(widgetRef.current as any).setAttribute('from', normalizeToE164(fromNumber))
                           }
-                          document.getElementById(buttonId)?.dispatchEvent(new Event('click', { bubbles: true }))
+                          if (!isDialerOpen) {
+                            document.getElementById(buttonId)?.dispatchEvent(new Event('click', { bubbles: true }))
+                          }
                         }}>Call Back</Button>
                       </div>
                     </div>
@@ -984,7 +990,9 @@ function DialPageInner() {
                               // Select the contact if they're in the list
                               const matchingContact = contacts.find(ct => ct.phone === c.contact_number || ct.id === c.lead_id)
                               if (matchingContact) setSelectedContactId(matchingContact.id)
-                              document.getElementById(buttonId)?.dispatchEvent(new Event('click', { bubbles: true }))
+                              if (!isDialerOpen) {
+                                document.getElementById(buttonId)?.dispatchEvent(new Event('click', { bubbles: true }))
+                              }
                             }}>📞</Button>
                           </div>
                         </div>
