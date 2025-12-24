@@ -81,6 +81,10 @@ function DialPageInner() {
   const [voicemails, setVoicemails] = useState<any[]>([])
   const [tokenError, setTokenError] = useState<string>("")
   const [callError, setCallError] = useState<string>("")
+  const [voicemailNumber, setVoicemailNumber] = useState<string>("")
+  const [voicemailGreeting, setVoicemailGreeting] = useState<string>("")
+  const [voicemailRings, setVoicemailRings] = useState<string>("0")
+  const [voicemailSaving, setVoicemailSaving] = useState<boolean>(false)
   // Number search parameters
   const [isoCountry, setIsoCountry] = useState<string>("US")
   const [areaCode, setAreaCode] = useState<string>("")
@@ -342,10 +346,28 @@ function DialPageInner() {
           const nums = data.numbers.map((n: any) => ({ phoneNumber: n.phoneNumber, friendlyName: n.friendlyName }))
           setPurchasedNumbers(nums)
           if (!fromNumber && nums.length > 0) setFromNumber(nums[0].phoneNumber)
+          if (!voicemailNumber && nums.length > 0) setVoicemailNumber(nums[0].phoneNumber)
         }
       } catch {}
     })()
   }, [])
+
+  // Load voicemail settings when selected voicemail number changes
+  useEffect(() => {
+    if (!voicemailNumber) return
+    ;(async () => {
+      try {
+        const url = new URL('/api/voice/voicemail/settings', window.location.origin)
+        url.searchParams.set('phoneNumber', voicemailNumber)
+        const res = await fetch(url.toString(), { cache: 'no-store' })
+        const json = await res.json()
+        if (json?.ok && json.setting) {
+          setVoicemailGreeting(json.setting.greeting || '')
+          setVoicemailRings(String(json.setting.ringSeconds ?? 0))
+        }
+      } catch {}
+    })()
+  }, [voicemailNumber])
 
   async function searchNumbers() {
     const url = new URL('/api/voice/sw/numbers/search', window.location.origin)
@@ -1057,6 +1079,81 @@ function DialPageInner() {
                 <h2 className="text-lg font-semibold text-teal-600 dark:text-teal-400">Voicemail</h2>
                 <Button size="sm" variant="outline" onClick={fetchVoicemails}>Refresh</Button>
               </div>
+
+              {/* Voicemail configuration */}
+              <div className="mb-3 rounded border bg-muted/40 p-3 space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium">Standard Voicemail</span>
+                  <span className="text-xs text-muted-foreground">Configure greeting and rings before voicemail for an incoming number.</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-[1.4fr_0.6fr_0.5fr] gap-2 items-center">
+                  <Select value={voicemailNumber} onValueChange={setVoicemailNumber}>
+                    <SelectTrigger className="h-8">
+                      <SelectValue placeholder="Select number" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {purchasedNumbers.map(n => (
+                        <SelectItem key={n.phoneNumber} value={n.phoneNumber}>
+                          {n.phoneNumber}{n.friendlyName ? ` — ${n.friendlyName}` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    type="number"
+                    min={0}
+                    className="h-8"
+                    value={voicemailRings}
+                    onChange={e => setVoicemailRings(e.target.value)}
+                    placeholder="Rings before voicemail (seconds)"
+                  />
+                  <Button
+                    size="sm"
+                    className="bg-teal-600 hover:bg-teal-700 text-white disabled:bg-gray-400"
+                    disabled={!voicemailNumber || voicemailSaving}
+                    onClick={async () => {
+                      if (!voicemailNumber) return
+                      setVoicemailSaving(true)
+                      try {
+                        const ringSeconds = Number(voicemailRings || '0') || 0
+                        await fetch('/api/voice/voicemail/settings', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            phoneNumber: voicemailNumber,
+                            greeting: voicemailGreeting || 'Please leave a message after the tone.',
+                            ringSeconds,
+                            mode: 'standard',
+                          }),
+                        })
+                        // Also ensure the number is wired to the voicemail answer webhook
+                        try {
+                          await fetch('/api/voice/sw/numbers/setup', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              phoneNumber: voicemailNumber,
+                              voiceUrl: `${window.location.origin}/api/voice/sw/voicemail/answer`,
+                              voiceMethod: 'POST',
+                            }),
+                          })
+                        } catch {}
+                      } finally {
+                        setVoicemailSaving(false)
+                      }
+                    }}
+                  >
+                    {voicemailSaving ? 'Saving…' : 'Save Settings'}
+                  </Button>
+                </div>
+                <Textarea
+                  className="h-20 text-sm"
+                  value={voicemailGreeting}
+                  onChange={e => setVoicemailGreeting(e.target.value)}
+                  placeholder="Voicemail greeting callers will hear before recording starts."
+                />
+              </div>
+
               <div className="space-y-2">
                 {voicemails.length === 0 ? (
                   <div className="text-sm text-muted-foreground">No voicemails found.</div>

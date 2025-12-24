@@ -51,6 +51,25 @@ export async function POST(_req: NextRequest) {
       results.voicemail_messages = 'error:' + (e?.message || String(e))
     }
 
+    // voicemail_settings (per-number voicemail configuration)
+    try {
+      await sql(`
+        CREATE TABLE IF NOT EXISTS voicemail_settings (
+          id SERIAL PRIMARY KEY,
+          phone_number TEXT NOT NULL,
+          greeting TEXT NOT NULL,
+          ring_seconds INT NOT NULL DEFAULT 0,
+          mode TEXT NOT NULL DEFAULT 'standard',
+          agent_prompt TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_voicemail_settings_number ON voicemail_settings(phone_number);
+      `)
+      results.voicemail_settings = 'ok'
+    } catch (e: any) {
+      results.voicemail_settings = 'error:' + (e?.message || String(e))
+    }
+
     return NextResponse.json({ ok: true, results })
   } catch (err: any) {
     return NextResponse.json({ ok: false, error: err?.message || String(err), results }, { status: 500 })
