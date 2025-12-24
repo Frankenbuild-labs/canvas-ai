@@ -694,8 +694,8 @@ function DialPageInner() {
                 className="bg-teal-600 hover:bg-teal-700 text-white disabled:bg-gray-400"
                 onClick={() => {
                   setIsDialerOpen(prev => !prev)
-                  if (widgetRef.current && (widgetRef.current as any).setAttribute) {
-                    ;(widgetRef.current as any).setAttribute('destination', '')
+                  if (widgetRef.current && (widgetRef.current as any).setAttribute && fromNumber) {
+                    ;(widgetRef.current as any).setAttribute('from', normalizeToE164(fromNumber))
                   }
                 }}
                 disabled={!dialerEnabled}
