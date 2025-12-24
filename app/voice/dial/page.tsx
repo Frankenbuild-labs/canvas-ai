@@ -75,6 +75,7 @@ function DialPageInner() {
   const [contacts, setContacts] = useState<Contact[]>([])
   const [selectedContactId, setSelectedContactId] = useState<string>("")
   const [fromNumber, setFromNumber] = useState<string>("")
+  const [manualNumber, setManualNumber] = useState<string>("")
   const [purchasedNumbers, setPurchasedNumbers] = useState<{ phoneNumber: string; friendlyName?: string }[]>([])
   const [recentCalls, setRecentCalls] = useState<any[]>([])
   const [voicemails, setVoicemails] = useState<any[]>([])
@@ -742,6 +743,37 @@ function DialPageInner() {
                 Missing SignalWire host. Ensure SIGNALWIRE_SPACE_URL matches the Call Widget token.
               </div>
             )}
+
+            {/* Manual number dial, mirrors Click to Dial logic */}
+            <div className="mt-3 grid grid-cols-[1.5fr_auto] gap-2 items-center">
+              <Input
+                type="tel"
+                placeholder="Enter number to dial"
+                value={manualNumber}
+                onChange={e => setManualNumber(e.target.value)}
+                className="h-9"
+              />
+              <Button
+                size="sm"
+                className="bg-teal-600 hover:bg-teal-700 text-white disabled:bg-gray-400"
+                disabled={!dialerEnabled || !manualNumber.trim()}
+                onClick={() => {
+                  if (!dialerEnabled || !manualNumber.trim()) return
+                  const norm = normalizeToE164(manualNumber)
+                  if (widgetRef.current && (widgetRef.current as any).setAttribute && norm) {
+                    ;(widgetRef.current as any).setAttribute('destination', norm)
+                  }
+                  if (widgetRef.current && (widgetRef.current as any).setAttribute && fromNumber) {
+                    ;(widgetRef.current as any).setAttribute('from', normalizeToE164(fromNumber))
+                  }
+                  if (!isDialerOpen) {
+                    document.getElementById(buttonId)?.dispatchEvent(new Event('click', { bubbles: true }))
+                  }
+                }}
+              >
+                Click to Dial
+              </Button>
+            </div>
 
             {/* Numbers settings moved here */}
             <div className="border-t pt-3 -mb-1" />
